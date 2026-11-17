@@ -1072,16 +1072,21 @@
       r.lang = LANGS[currentLang].code;
       function mine() { return rec === r && recSeq === my; }
 
-      r.onstart = function () {
+      function alive(tag) {
         if (!mine()) return;
         clearTimeout(startWatch);
         recActive = true;
         retryCount = 0;
-        logSR("시작");
-      };
+        if (tag) logSR(tag);
+        if (phase === "listen") $("statusLine").textContent = autoSend ? "🎙️ 듣고 있어요 · 멈추면 자동 전송돼요" : "🎙️ 듣고 있어요 · 다 말했으면 가운데 버튼";
+      }
+      r.onstart = function () { alive("시작"); };
+      r.onaudiostart = function () { alive(""); };
+      r.onspeechstart = function () { alive(""); };
 
       r.onresult = function (e) {
         if (!mine()) return;
+        alive("");
         var fin = "", inter = "";
         for (var i = 0; i < e.results.length; i++) {
           var t = e.results[i][0].transcript;
@@ -1163,21 +1168,16 @@
         setAudioSession("play-and-record");
         recActive = true;
         r.start();
-        // 2.5초 안에 시작 신호가 없으면 새 객체로 다시 시도
+        $("statusLine").textContent = "⏳ 마이크 준비 중…";
+        // 5초 안에 아무 신호가 없으면 새 객체로 조용히 다시 시도 (포기하지 않음)
         clearTimeout(startWatch);
         startWatch = setTimeout(function () {
-          if (rec !== r || !wantListen) return;
+          if (rec !== r || !wantListen || phase !== "listen") return;
           logSR("시작 지연 → 재시도");
-          recActive = false;
           retryCount++;
-          if (retryCount > 3) {
-            wantListen = false;
-            toast("음성인식이 시작되지 않아요. 앱을 새로고침하거나 입력창을 이용해 주세요.", 5000);
-            setPhase("type");
-            return;
-          }
+          if (retryCount === 3) toast("마이크가 잘 켜지지 않아요. 계속 안 되면 입력 버튼(⌨️)으로 대답해 주세요.", 4000);
           createRec(); safeStart();
-        }, 2500);
+        }, 5000);
       } catch (e) {
         logSR("start 예외: " + (e && e.name));
         recActive = false;
