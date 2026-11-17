@@ -724,6 +724,9 @@
         big.classList.add("listen"); lbl.textContent = autoSend ? "듣는 중…" : "다 말했으면 탭";
         av.classList.add("listening");
         st.textContent = autoSend ? "🎙️ 말씀하세요 · 멈추면 자동 전송돼요" : "🎙️ 말씀하세요 · 끝나면 가운데 버튼을 누르세요";
+      } else if (p === "confirm") {
+        ic.textContent = "✅"; lbl.textContent = "보내기";
+        st.textContent = "인식된 말을 확인하세요 · 틀렸으면 ✏️ 고치기";
       } else if (p === "ready") {
         ic.textContent = "🎤"; lbl.textContent = "눌러서 말하기";
         st.textContent = "🎤 가운데 버튼을 누르고 말하세요";
@@ -737,7 +740,8 @@
       }
       if (p !== "coach") clearSpeaking();
       syncCallButtons();
-      if (p !== "listen") showLive("");
+      if (p !== "listen" && p !== "confirm") showLive("");
+      if (p === "confirm") showConfirmChips(); else hideConfirmChips();
       renderTyping();
     }
 
@@ -755,6 +759,7 @@
           el.id = "liveBubble";
           el.className = "msg user ghost";
           el.innerHTML = '<div class="bubble"></div>';
+          el.firstChild.onclick = function () { if (phase === "confirm") window.__editLive(); };
           $("chatList").appendChild(el);
         }
         el.firstChild.textContent = text;
@@ -766,6 +771,22 @@
         el.parentNode.removeChild(el);
       }
     }
+
+    function showConfirmChips() {
+      var el = $("liveBubble");
+      if (!el) return;
+      if (!$("confirmChips")) {
+        var c = document.createElement("div");
+        c.id = "confirmChips";
+        c.style.cssText = "display:flex; gap:6px; margin-top:5px;";
+        c.innerHTML = '<button type="button" class="chip-btn on" onclick="window.__editLive()">✏️ 고치기</button>' +
+                      '<button type="button" class="chip-btn" onclick="window.__retalk()">🎤 다시 말하기</button>' +
+                      '<button type="button" class="chip-btn" style="background:var(--accent); color:#fff; border-color:var(--accent);" onclick="window.__mic()">✅ 보내기</button>';
+        el.appendChild(c);
+      }
+      scrollChat();
+    }
+    function hideConfirmChips() { var c = $("confirmChips"); if (c) c.parentNode.removeChild(c); }
 
     function renderTyping() {
       var el = $("typingBubble");
@@ -1159,6 +1180,19 @@
 
         if (pendingSend) { pendingSend = false; flushSend(); return; }
 
+        if (wantListen && isCalling && phase === "listen" && isIOS) {
+          if (committed) {
+            wantListen = false;
+            if (autoSend) { flushSend(); return; }
+            showLive(committed);
+            setPhase("confirm");
+            return;
+          }
+          // 아무 말도 안 들렸으면 한 번만 다시 시도, 안 되면 버튼으로
+          if (retryCount < 1) { retryCount++; setTimeout(function () { if (wantListen && !recActive && phase === "listen") { createRec(); safeStart(); } }, 200); }
+          else { wantListen = false; setPhase("ready"); $("statusLine").textContent = "🎤 잘 안 들렸어요 · 버튼을 누르고 다시 말해 주세요"; }
+          return;
+        }
         if (wantListen && isCalling && phase === "listen") {
           if (autoSend && piece) {
             if (autoTimer) clearTimeout(autoTimer);
@@ -1193,6 +1227,7 @@
           if (rec !== r || !wantListen || phase !== "listen") return;
           logSR("시작 지연 → 재시도");
           retryCount++;
+          if (isIOS) { wantListen = false; try { r.abort(); } catch (e) {} setPhase("ready"); $("statusLine").textContent = "🎤 마이크가 안 켜졌어요 · 버튼을 다시 눌러 주세요"; return; }
           if (retryCount === 3) toast("마이크가 잘 켜지지 않아요. 계속 안 되면 입력 버튼(⌨️)으로 대답해 주세요.", 4000);
           createRec(); safeStart();
         }, 5000);
@@ -1208,7 +1243,7 @@
        마이크로 직접 녹음해서 Gemini에게 '받아쓰기 + 답변'을 한 번에 요청함 */
     var actx = null, recStream = null, recNode = null, recSrc = null, recBufs = [], recLen = 0;
     var recording = false, aiRecMode = false, recStartT = 0, recSpeechMs = 0, recSilenceStart = 0;
-    function sttMode() { return getStore("s365_stt", isIOS ? "ai" : "browser"); }
+    function sttMode() { return getStore("s365_stt2", "browser"); }
     function useAISTT() {
       if (getProvider() !== "gemini" || !providerKey()) return false;
       return sttMode() === "ai" || !getSR();
@@ -1498,6 +1533,7 @@
       if (!isCalling) { window.__call(); return; }
       if (phase === "coach") { cancelSpeech(); startListening(); return; }
       if (phase === "listen") { finishSpeaking(); return; }
+      if (phase === "confirm") { flushSend(); return; }
       if (phase === "think") return;
       startListening();   // ready / type 상태: 버튼을 누른 순간 마이크 켜기
     };
@@ -1798,6 +1834,21 @@
       renderChat();
       resumeListen();
     }
+    window.__editLive = function () {
+      var t = joinText(committed, sesFinal || sesInterim).trim();
+      committed = ""; sesFinal = ""; sesInterim = "";
+      stopListening();
+      showLive("");
+      setPhase(isCalling ? "ready" : "idle");
+      $("manualInput").value = t;
+      showType(true);
+      $("statusLine").textContent = "✏️ 고친 뒤 [전송]을 누르세요";
+    };
+    window.__retalk = function () {
+      committed = ""; sesFinal = ""; sesInterim = "";
+      showLive("");
+      startListening();
+    };
     window.__playMine = function (i) {
       var m = chats[currentLang][i];
       if (!m || !m.audioUrl) return;
@@ -2217,7 +2268,7 @@
       $("rateLabel").textContent = "×" + baseRate.toFixed(2);
     };
     window.__setStt = function (on) {
-      setStore("s365_stt", on ? "ai" : "browser");
+      setStore("s365_stt2", on ? "ai" : "browser");
       toast(on ? (getProvider() === "gemini" && providerKey() ? "🤖 Gemini가 녹음을 듣고 알아들어요" : "🤖 AI 음성인식은 Gemini 키를 등록해야 동작해요") : "브라우저 음성인식을 사용해요", 2800);
     };
     window.__setTap = function (on) {
