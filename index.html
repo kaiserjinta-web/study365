@@ -382,8 +382,12 @@
       <!-- 📖 단어장 -->
       <section class="view scroll" id="view-vocab">
         <div class="page">
-          <div class="page-title" id="vocabTitle">단어장</div>
-          <div class="page-sub">🔊를 눌러 발음을 듣고 소리 내어 3번 따라 읽어보세요</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <div class="page-title" id="vocabTitle">단어장</div>
+            <button type="button" class="top-btn" id="vocabRegen" onclick="window.__regenVocab()">🔄 새로 만들기</button>
+          </div>
+          <div class="page-sub" id="vocabSub">🔊를 눌러 발음을 듣고 소리 내어 3번 따라 읽어보세요</div>
+          <div id="vocabDates" style="display:flex; gap:6px; overflow-x:auto; padding-bottom:2px;"></div>
           <div id="vocabListContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
       </section>
@@ -391,7 +395,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-12</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-13</span></div>
 
 
       <div class="panel">
@@ -2811,17 +2815,155 @@
     };
 
     /* ---------------- 단어장 ---------------- */
+    /* ---------------- 📖 오늘의 단어장 (매일 자동 생성) ----------------
+       하루 한 번 Gemini가 현재 단계에 맞는 단어 10개를 만들어 날짜별로 저장. 대화 기능과는 별개. */
+    var vocabView = { date: "", list: null, loading: false };
+    function todayStr() { return dayKey(new Date()); }
+    function vocabKey(lang, date) { return "s365_vocab_" + lang + "_" + date; }
+    function vocabDates(lang) { try { return JSON.parse(getStore("s365_vocab_dates_" + lang, "[]")) || []; } catch (e) { return []; } }
+    function loadVocab(lang, date) { try { return JSON.parse(getStore(vocabKey(lang, date), "null")); } catch (e) { return null; } }
+    function saveVocab(lang, date, data) {
+      setStore(vocabKey(lang, date), JSON.stringify(data));
+      var ds = vocabDates(lang).filter(function (d) { return d !== date; });
+      ds.unshift(date);
+      // 오래된 날짜(30일 넘은 것)는 정리
+      while (ds.length > 30) { var old = ds.pop(); try { window.localStorage.removeItem(vocabKey(lang, old)); } catch (e) {} delete memStore[vocabKey(lang, old)]; }
+      setStore("s365_vocab_dates_" + lang, JSON.stringify(ds));
+    }
+    function recentVocabWords(lang) {
+      var words = [];
+      vocabDates(lang).slice(0, 14).forEach(function (d) {
+        var v = loadVocab(lang, d);
+        if (v && v.items) v.items.forEach(function (x) { if (x.word) words.push(x.word); });
+      });
+      return words.slice(0, 120);
+    }
+
+    function generateVocab(lang, force) {
+      var key = getStore("steady_api_key", "");
+      var date = todayStr();
+      if (!key || vocabView.loading) return;
+      if (!force && loadVocab(lang, date)) return;
+      vocabView.loading = true;
+      if (currentTab === "vocab") renderVocab();
+      var info = LANGS[lang];
+      var stageEl = $("stageSelect");
+      var stage = (lang === currentLang && stageEl.options[stageEl.selectedIndex]) ? stageEl.options[stageEl.selectedIndex].text : info.levels[0];
+      var corr = [];
+      try { corr = (JSON.parse(getStore("steady_corr_" + lang, "[]")) || []).slice(0, 5).map(function (c) { return c.fixed; }); } catch (e) {}
+      var avoid = recentVocabWords(lang);
+      var sys = [
+        "You create today's vocabulary list for a Korean adult learner of " + info.langName + ". Level/topic: " + stage + ".",
+        "Pick 10 useful words or short expressions for real conversation at this level (mix of words, collocations, set phrases). Vary topics day to day.",
+        avoid.length ? "Do NOT include any of these already-studied items: " + JSON.stringify(avoid) : "",
+        corr.length ? "Include 1-2 items related to these expressions the learner recently needed: " + JSON.stringify(corr) : "",
+        "For each item give: word (in " + info.langName + (lang === "zh" ? ", simplified Chinese" : "") + "), read (" + (lang === "zh" ? "pinyin with tone marks" : lang === "ja" ? "hiragana reading" : "empty string") + "), kor (pronunciation in Korean Hangul letters), meaning (Korean), example (one short natural example sentence in " + info.langName + "), exampleKo (Korean translation of the example).",
+        "Return JSON only: {\"theme\":\"오늘의 주제(한국어, 짧게)\",\"items\":[{\"word\":\"\",\"read\":\"\",\"kor\":\"\",\"meaning\":\"\",\"example\":\"\",\"exampleKo\":\"\"}]}"
+      ].filter(Boolean).join("\n");
+      var models = [];
+      function add(m) { if (m && models.indexOf(m) === -1) models.push(m); }
+      add(getStore("s365_model", ""));
+      storedModels().forEach(function (m) { if (/flash/.test(m)) add(m); });
+      ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"].forEach(add);
+      models = models.slice(0, 6);
+      var i = 0;
+      function tryOne() {
+        var model = models[i];
+        return fetch(API_BASE + "/models/" + encodeURIComponent(model) + ":generateContent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: sys }] },
+            contents: [{ role: "user", parts: [{ text: "오늘(" + date + ")의 단어 10개를 만들어 주세요." }] }],
+            generationConfig: { responseMimeType: "application/json", temperature: 0.9, maxOutputTokens: 2500 }
+          })
+        }).then(readRes).then(function (res) {
+          if ((!res.ok || res.j.error) && i < models.length - 1 && res.status !== 401 && res.status !== 403) { i++; return tryOne(); }
+          return res;
+        });
+      }
+      tryOne().then(function (res) {
+        vocabView.loading = false;
+        var p = res && res.ok ? parseJsonLoose(extractText(res).text) : null;
+        var items = p && p.items ? p.items.filter(function (x) { return x && x.word; }).slice(0, 12) : [];
+        if (!items.length) {
+          vocabView.error = (res && res.j && res.j.error && res.j.error.message) || "단어를 만들지 못했어요";
+        } else {
+          vocabView.error = "";
+          saveVocab(lang, date, { theme: p.theme || "", stage: stage, items: items, created: Date.now() });
+          vocabView.date = date;
+          if (lang === currentLang) refreshVocabBadge();
+        }
+        if (currentTab === "vocab" && lang === currentLang) renderVocab();
+      }).catch(function (e) {
+        vocabView.loading = false;
+        vocabView.error = "네트워크 오류";
+        if (currentTab === "vocab" && lang === currentLang) renderVocab();
+      });
+    }
+    function refreshVocabBadge() {}
+
     function renderVocab() {
       var info = LANGS[currentLang];
+      var hasKey = !!getStore("steady_api_key", "");
+      var dates = vocabDates(currentLang);
+      var today = todayStr();
+      if (!vocabView.date || (vocabView.date !== today && dates.indexOf(vocabView.date) === -1)) vocabView.date = today;
+      if (hasKey && !loadVocab(currentLang, today) && !vocabView.loading && !vocabView.error) { generateVocab(currentLang, false); }
+      var data = loadVocab(currentLang, vocabView.date);
       $("vocabTitle").textContent = info.label + " 단어장";
-      $("vocabListContainer").innerHTML = info.vocab.map(function (v, i) {
-        return '<div class="vitem"><div style="min-width:0;"><div><span class="vword">' + esc(v.word) + '</span>' +
-          (v.read ? '<span class="vread">' + esc(v.read) + '</span>' : '') + '</div>' +
-          (v.kor ? '<div class="vkor">🔈 ' + esc(v.kor) + '</div>' : '') +
-          '<div class="vmean">' + esc(v.meaning) + '</div></div>' +
-          '<button type="button" class="vplay" onclick="window.__speakWord(' + i + ')" aria-label="발음 듣기">🔊</button></div>';
-      }).join("");
+      $("vocabRegen").style.display = hasKey ? "" : "none";
+      $("vocabRegen").disabled = vocabView.loading;
+
+      // 날짜 선택 칩
+      var chips = "";
+      var allDates = dates.slice(0, 14);
+      if (allDates.indexOf(today) === -1) allDates.unshift(today);
+      if (hasKey) allDates.forEach(function (d) {
+        var on = d === vocabView.date;
+        var label = d === today ? "오늘" : (parseInt(d.slice(5, 7), 10) + "/" + parseInt(d.slice(8, 10), 10));
+        chips += '<button type="button" class="chip-btn' + (on ? ' on' : '') + '" onclick="window.__vocabDate(\'' + d + '\')">' + label + '</button>';
+      });
+      $("vocabDates").innerHTML = chips;
+
+      var html = "";
+      if (vocabView.loading && vocabView.date === today && !data) {
+        $("vocabSub").textContent = "✨ 오늘의 단어를 만드는 중이에요… (몇 초 걸려요)";
+        html = '<div class="panel empty"><span class="typing"><i></i><i></i><i></i></span><br>' + esc(info.label) + ' 단어 10개를 고르고 있어요</div>';
+      } else if (data && data.items) {
+        var dlabel = vocabView.date === today ? "오늘의 단어" : (parseInt(vocabView.date.slice(5, 7), 10) + "월 " + parseInt(vocabView.date.slice(8, 10), 10) + "일 단어");
+        $("vocabSub").textContent = "📅 " + dlabel + (data.theme ? " · " + data.theme : "") + (data.stage ? " · " + data.stage.replace(/^\d단계:\s*/, "") : "");
+        html = data.items.map(function (v, i) {
+          return '<div class="vitem" style="align-items:flex-start;"><div style="min-width:0; flex:1;">' +
+            '<div><span class="vword">' + esc(v.word) + '</span>' + (v.read && v.read !== v.word ? '<span class="vread">' + esc(v.read) + '</span>' : '') + '</div>' +
+            (v.kor ? '<div class="vkor">🔈 ' + esc(v.kor) + '</div>' : '') +
+            '<div class="vmean">' + esc(v.meaning || "") + '</div>' +
+            (v.example ? '<div style="margin-top:7px; padding-top:7px; border-top:1px dashed var(--border); font-size:13px; line-height:1.5; cursor:pointer;" onclick="window.__speakVocab(' + i + ',1)">💬 ' + esc(v.example) + '<div style="font-size:12px; color:var(--sub);">' + esc(v.exampleKo || "") + '</div></div>' : '') +
+            '</div><button type="button" class="vplay" onclick="window.__speakVocab(' + i + ',0)" aria-label="발음 듣기">🔊</button></div>';
+        }).join("");
+        if (vocabView.error && vocabView.date === today) html = '<div class="panel warn">' + esc(vocabView.error) + '</div>' + html;
+      } else {
+        // 키가 없거나 생성 실패 → 기본 단어
+        $("vocabSub").textContent = hasKey
+          ? "⚠️ 오늘의 단어를 만들지 못했어요" + (vocabView.error ? " (" + vocabView.error + ")" : "") + " · 🔄로 다시 시도"
+          : "📚 기본 단어 · ⚙️설정에서 Gemini 키를 등록하면 매일 새 단어가 나와요";
+        html = info.vocab.map(function (v, i) {
+          return '<div class="vitem"><div style="min-width:0;"><div><span class="vword">' + esc(v.word) + '</span>' +
+            (v.read ? '<span class="vread">' + esc(v.read) + '</span>' : '') + '</div>' +
+            (v.kor ? '<div class="vkor">🔈 ' + esc(v.kor) + '</div>' : '') +
+            '<div class="vmean">' + esc(v.meaning) + '</div></div>' +
+            '<button type="button" class="vplay" onclick="window.__speakWord(' + i + ')" aria-label="발음 듣기">🔊</button></div>';
+        }).join("");
+      }
+      $("vocabListContainer").innerHTML = html;
     }
+    window.__vocabDate = function (d) { vocabView.date = d; renderVocab(); };
+    window.__regenVocab = function () { vocabView.error = ""; vocabView.date = todayStr(); generateVocab(currentLang, true); renderVocab(); };
+    window.__speakVocab = function (i, ex) {
+      var data = loadVocab(currentLang, vocabView.date);
+      var v = data && data.items && data.items[i];
+      if (v) speakText(ex ? v.example : v.word);
+    };
     function speakText(text) {
       if (!("speechSynthesis" in window) || !text) return;
       if (isCalling) stopCall();
@@ -2866,7 +3008,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-12 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-13 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
@@ -3044,6 +3186,7 @@
     /* ---------------- 시작 ---------------- */
     applyTheme();
     window.__setLang(getStore("s365_lang", "zh"));
+    setTimeout(function () { try { generateVocab(currentLang, false); } catch (e) {} }, 2500);
     if (inAppBrowser()) setTimeout(function () { toast("앱 내 브라우저에서는 음성인식이 안 될 수 있어요. 크롬/사파리로 열어주세요.", 5000); }, 800);
   })();
   </script>
