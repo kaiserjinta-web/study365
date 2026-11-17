@@ -424,6 +424,7 @@
           <label class="switch"><input type="checkbox" id="autoToggle" onchange="window.__setAuto(this.checked)"><span></span></label>
         </div>
         <div class="diag" id="diagBox" style="margin-top:8px;"></div>
+        <button type="button" class="btn ghost" style="width:100%; margin-top:8px;" onclick="window.__copyDiag()">📋 진단 정보 복사 (문제 생기면 눌러서 Claude에게 붙여넣기)</button>
       </div>
 
       <div class="panel">
@@ -707,6 +708,7 @@
     /* ---------------- UI 상태 ---------------- */
     var speakingIdx = -1;
     function setPhase(p) {
+      if (p !== phase) logSR("상태→" + p);
       phase = p;
       if (!isCalling && p !== "think") p = phase = "idle";
       var big = $("bigBtn"), ic = $("bigIc"), lbl = $("bigLabel"), st = $("statusLine"), av = $("callerAvatar");
@@ -941,6 +943,7 @@
       if ("speechSynthesis" in window) { try { window.speechSynthesis.cancel(); } catch (e) {} }
     }
     function ttsFailed() {
+      logSR("코치 음성 재생 실패");
       if (ttsWarned) return;
       ttsWarned = true;
       toast("🔇 코치 음성이 재생되지 않아요.\n· 휴대폰 무음/진동 모드 해제, 미디어 볼륨 올리기\n· 설정에서 " + LANGS[currentLang].label + " 음성(TTS) 데이터 설치 확인\n그동안은 화면 자막을 보고 대답해 주세요.", 8000);
@@ -961,6 +964,7 @@
       function finishAll() {
         if (finished || token !== speakToken) return;
         finished = true;
+        logSR("코치 음성 끝");
         if (done) done();
       }
       function next() {
@@ -1018,6 +1022,7 @@
         if (busy && idx === 1) setTimeout(go, 150); else go();
       }
       // 스피커 사용 시: 마이크가 완전히 꺼지고 휴대폰 소리가 '미디어(스피커)' 모드로 돌아온 뒤 재생
+      logSR("코치 음성 시작");
       whenMicReleased(token, function () {
         setAudioSession("playback");
         next();
@@ -1085,7 +1090,7 @@
     function logSR(msg) {
       var d = new Date();
       srLog.push(pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()) + " " + msg);
-      if (srLog.length > 12) srLog.shift();
+      if (srLog.length > 60) srLog.shift();
     }
 
     // 매 턴마다 '새' 음성인식 객체를 만듦: 한 객체를 계속 재사용하면
@@ -1819,6 +1824,7 @@
     var aiRetried = false, lastAIError = "";
     function failAI(msg) {
       lastAIError = msg;
+      logSR("AI 실패: " + String(msg).slice(0, 80));
       var l = chats[currentLang];
       var lastUser = "";
       for (var i = l.length - 1; i >= 0; i--) if (l[i].sender === "user") { lastUser = l[i].target; break; }
@@ -1870,6 +1876,7 @@
 
     function requestGemini(userText, apiKey) {
       var langAtRequest = currentLang, reqStart = Date.now();
+      logSR("AI 요청" + (pendingAudioMsg() ? "(음성)" : ""));
       startThinkClock();
       callGemini(apiKey, {
         systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
@@ -1878,6 +1885,7 @@
       .then(function (res) {
         if (langAtRequest !== currentLang) return;
         lastLatency = ((Date.now() - reqStart) / 1000).toFixed(1) + "초 · " + res.model;
+        logSR("AI 응답 " + res.status + " " + lastLatency + (res.attempts && res.attempts.length > 1 ? " (시도 " + res.attempts.length + "회)" : ""));
         if (!res.ok || res.j.error) {
           var msg = res.j.error && res.j.error.message ? res.j.error.message : ("HTTP " + res.status);
           if (res.status === 400 && /API key/i.test(msg)) msg = "API 키가 올바르지 않아요";
@@ -2266,6 +2274,26 @@
       baseRate = parseFloat(v) || 0.95;
       setStore("s365_rate", String(baseRate));
       $("rateLabel").textContent = "×" + baseRate.toFixed(2);
+    };
+    window.__copyDiag = function () {
+      var lines = [
+        "[Study365 진단] " + new Date().toLocaleString("ko-KR"),
+        "UA: " + navigator.userAgent,
+        "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
+          " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
+          " 인식:" + sttMode() + " 눌러말하기:" + tapMode + " 자동전송:" + autoSend + " 빠른모드:" + speedMode(),
+        "상태:" + phase + " 통화중:" + isCalling + " 대화수:" + userTurnCount() + " 마지막오류:" + (lastAIError || "-"),
+        "기록:"
+      ].concat(srLog);
+      var text = lines.join("\n");
+      function ok() { toast("📋 진단 정보를 복사했어요. Claude 대화창에 붙여넣어 주세요.", 3000); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok).catch(function () { fallback(); });
+      else fallback();
+      function fallback() {
+        var ta = $("studyCardText"); var keep = ta.value; ta.value = text; ta.select();
+        try { document.execCommand("copy"); ok(); } catch (e) { toast("복사에 실패했어요"); }
+        ta.value = keep;
+      }
     };
     window.__setStt = function (on) {
       setStore("s365_stt2", on ? "ai" : "browser");
