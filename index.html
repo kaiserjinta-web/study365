@@ -395,7 +395,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-13</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-14</span></div>
 
 
       <div class="panel">
@@ -2860,34 +2860,55 @@
         "For each item give: word (in " + info.langName + (lang === "zh" ? ", simplified Chinese" : "") + "), read (" + (lang === "zh" ? "pinyin with tone marks" : lang === "ja" ? "hiragana reading" : "empty string") + "), kor (pronunciation in Korean Hangul letters), meaning (Korean), example (one short natural example sentence in " + info.langName + "), exampleKo (Korean translation of the example).",
         "Return JSON only: {\"theme\":\"오늘의 주제(한국어, 짧게)\",\"items\":[{\"word\":\"\",\"read\":\"\",\"kor\":\"\",\"meaning\":\"\",\"example\":\"\",\"exampleKo\":\"\"}]}"
       ].filter(Boolean).join("\n");
+      // 빠르고 가벼운 lite 모델 우선
       var models = [];
       function add(m) { if (m && models.indexOf(m) === -1) models.push(m); }
+      storedModels().forEach(function (m) { if (/flash-lite/.test(m)) add(m); });
+      ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite"].forEach(add);
       add(getStore("s365_model", ""));
       storedModels().forEach(function (m) { if (/flash/.test(m)) add(m); });
-      ["gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"].forEach(add);
+      ["gemini-3.6-flash", "gemini-3.7-flash", "gemini-flash-latest", "gemini-2.5-flash"].forEach(add);
       models = models.slice(0, 6);
-      var i = 0;
+      var i = 0, noThink = {}, lastErr = "";
       function tryOne() {
         var model = models[i];
+        var gen = { responseMimeType: "application/json", temperature: 0.9, maxOutputTokens: 8000 };
+        // 생각(thinking) 단계가 출력 한도를 다 써버려 빈 응답이 나오는 것 방지
+        if (!noThink[model]) {
+          if (/gemini-2\.5-flash/.test(model)) gen.thinkingConfig = { thinkingBudget: 0 };
+          else if (/gemini-[3-9]/.test(model)) gen.thinkingConfig = { thinkingLevel: "minimal" };
+        }
         return fetch(API_BASE + "/models/" + encodeURIComponent(model) + ":generateContent", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: sys }] },
             contents: [{ role: "user", parts: [{ text: "오늘(" + date + ")의 단어 10개를 만들어 주세요." }] }],
-            generationConfig: { responseMimeType: "application/json", temperature: 0.9, maxOutputTokens: 2500 }
+            generationConfig: gen
           })
         }).then(readRes).then(function (res) {
-          if ((!res.ok || res.j.error) && i < models.length - 1 && res.status !== 401 && res.status !== 403) { i++; return tryOne(); }
+          var em = (res.j && res.j.error && res.j.error.message) || "";
+          if (!res.ok && res.status === 400 && /thinking/i.test(em) && !noThink[model]) { noThink[model] = true; return tryOne(); }
+          var ok = res.ok && !res.j.error;
+          var p = ok ? parseJsonLoose(extractText(res).text) : null;
+          if (!(p && p.items && p.items.length)) {
+            lastErr = em || ("빈 응답 · " + (extractText(res).reason || res.status) + " · " + model);
+            logSR("단어장 실패: " + lastErr.slice(0, 80));
+            if (i < models.length - 1 && res.status !== 401 && res.status !== 403) { i++; return tryOne(); }
+            res.vocabErr = lastErr;
+            return res;
+          }
+          res.parsed = p;
+          logSR("단어장 생성: " + model);
           return res;
         });
       }
       tryOne().then(function (res) {
         vocabView.loading = false;
-        var p = res && res.ok ? parseJsonLoose(extractText(res).text) : null;
+        var p = res && res.parsed;
         var items = p && p.items ? p.items.filter(function (x) { return x && x.word; }).slice(0, 12) : [];
         if (!items.length) {
-          vocabView.error = (res && res.j && res.j.error && res.j.error.message) || "단어를 만들지 못했어요";
+          vocabView.error = (res && res.vocabErr) || "단어를 만들지 못했어요";
         } else {
           vocabView.error = "";
           saveVocab(lang, date, { theme: p.theme || "", stage: stage, items: items, created: Date.now() });
@@ -2897,7 +2918,7 @@
         if (currentTab === "vocab" && lang === currentLang) renderVocab();
       }).catch(function (e) {
         vocabView.loading = false;
-        vocabView.error = "네트워크 오류";
+        vocabView.error = "네트워크 오류 (" + (e && e.message) + ")";
         if (currentTab === "vocab" && lang === currentLang) renderVocab();
       });
     }
@@ -3008,7 +3029,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-13 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-14 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
