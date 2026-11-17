@@ -785,7 +785,8 @@
           html += '<div class="msg user"><div class="bubble">' + esc(m.target) + '</div>' +
             (m.fix ? '<div class="fix-note">✏️ 더 자연스럽게: <b>' + esc(m.fix) + '</b>' + (m.reason ? '<br>' + esc(m.reason) : '') + '</div>' : '') + '</div>';
         } else if (m.sender === "sys") {
-          html += '<div class="sys-chip">' + esc(m.target) + '</div>';
+          html += '<div class="sys-chip">' + esc(m.target) +
+            (m.retry ? '<br><button type="button" class="top-btn" style="margin-top:6px; color:var(--accent);" onclick="window.__retryAI()">🔁 다시 시도</button>' : '') + '</div>';
         } else {
           var sub = "";
           if (m.reading && m.reading !== m.target) sub += '<div class="b-reading">' + esc(m.reading) + '</div>';
@@ -1324,7 +1325,7 @@
       setPhase("think");
       var key = providerKey();
       if (key) {
-        try { if (getProvider() === "claude") requestClaude(text, key); else requestGemini(text, key); }
+        try { requestAI(text, false); }
         catch (err) { toast("⚠️ 요청 준비 중 오류: " + (err && err.message)); if (isCalling) startListening(); else setPhase("idle"); }
       }
       else {
@@ -1525,7 +1526,11 @@
             } else noThink[model] = true;
             return tryOne();
           }
-          if (res.timeout && i < list.length - 1 && i < 2) { i++; return tryOne(); }
+          // 시간 초과·서버 혼잡(429/5xx)이면 잠깐 쉬고 다른 모델로
+          if ((res.timeout || res.status === 429 || res.status >= 500) && i < list.length - 1 && i < 3) {
+            i++;
+            return new Promise(function (ok) { setTimeout(ok, 500); }).then(tryOne);
+          }
           if ((!res.ok || res.j.error) && isModelError(res) && i < list.length - 1) { i++; return tryOne(); }
           if (res.ok && !res.j.error) setStore("s365_model", model);
           return res;
@@ -1564,13 +1569,41 @@
       if (dup) { coachSay(TELL_MORE[currentLang]); return; }
       coachSay({ target: p.target, reading: p.reading || "", kor: p.kor || "", ko: p.ko || "" });
     }
+    function requestAI(userText, isRetry) {
+      var key = providerKey();
+      if (!key) { coachSay(offlineReply()); return; }
+      aiRetried = !!isRetry;
+      if (getProvider() === "claude") requestClaude(userText, key); else requestGemini(userText, key);
+    }
+    var aiRetried = false, lastAIError = "";
     function failAI(msg) {
-      // 엉뚱한 랜덤 질문으로 넘어가지 않고, 방금 한 말을 다시 보낼 수 있게 되돌림
+      lastAIError = msg;
       var l = chats[currentLang];
-      if (l.length && l[l.length - 1].sender === "user") { $("manualInput").value = l.pop().target; renderChat(); }
-      toast("⚠️ AI 응답 실패: " + msg + "\n방금 한 말을 입력창에 넣어뒀어요. [전송]으로 다시 보내거나 다시 말해 주세요. (⚙️설정 → 연결 테스트로 원인 확인)", 7000);
+      var lastUser = "";
+      for (var i = l.length - 1; i >= 0; i--) if (l[i].sender === "user") { lastUser = l[i].target; break; }
+      // 한 번은 조용히 자동 재시도
+      if (!aiRetried && lastUser) {
+        aiRetried = true;
+        $("statusLine").textContent = "🔁 응답이 없어 한 번 더 요청하는 중…";
+        setTimeout(function () { requestAI(lastUser, true); }, 800);
+        return;
+      }
+      // 내 말은 그대로 두고, 오류 내용과 [다시 시도] 버튼을 대화창에 표시
+      l.push({ sender: "sys", retry: true, target: "⚠️ 코치가 답하지 못했어요 · " + msg });
+      renderChat();
       if (isCalling) startListening(); else setPhase("idle");
     }
+    window.__retryAI = function () {
+      var l = chats[currentLang];
+      for (var i = l.length - 1; i >= 0; i--) if (l[i].sender === "sys" && l[i].retry) { l.splice(i, 1); break; }
+      var lastUser = "";
+      for (var j = l.length - 1; j >= 0; j--) if (l[j].sender === "user") { lastUser = l[j].target; break; }
+      if (!lastUser) return;
+      stopListening(); cancelSpeech();
+      renderChat();
+      setPhase("think");
+      requestAI(lastUser, false);
+    };
 
     function requestGemini(userText, apiKey) {
       var langAtRequest = currentLang, reqStart = Date.now();
@@ -1585,7 +1618,9 @@
         if (!res.ok || res.j.error) {
           var msg = res.j.error && res.j.error.message ? res.j.error.message : ("HTTP " + res.status);
           if (res.status === 400 && /API key/i.test(msg)) msg = "API 키가 올바르지 않아요";
-          else if (res.status === 429) msg = "사용량 한도 초과(잠시 후 다시)";
+          else if (res.status === 429) msg = "무료 사용량 한도 초과(1분 정도 뒤 다시) · " + msg;
+          else if (res.status >= 500) msg = "구글 서버 혼잡(잠시 후 다시) · " + msg;
+          else if (res.status === 401 || res.status === 403) msg = "API 키 인증 문제 · " + msg;
           else if (res.timeout) msg = "응답 시간 초과(25초). 네트워크가 느리거나 모델이 바빠요";
           else if (isModelError(res)) msg = "이 키로 쓸 수 있는 모델을 찾지 못했어요";
           throw new Error(msg);
