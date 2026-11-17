@@ -797,6 +797,7 @@
         var m = list[i];
         if (m.sender === "user") {
           html += '<div class="msg user"><div class="bubble">' + esc(m.target) + '</div>' +
+            (m.audioUrl ? '<button type="button" class="chip-btn" style="margin-top:4px;" onclick="window.__playMine(' + i + ')">▶ 내 녹음 듣기</button>' : '') +
             (m.fix ? '<div class="fix-note">✏️ 더 자연스럽게: <b>' + esc(m.fix) + '</b>' + (m.reason ? '<br>' + esc(m.reason) : '') + '</div>' : '') + '</div>';
         } else if (m.sender === "sys") {
           html += '<div class="sys-chip">' + esc(m.target) +
@@ -1234,11 +1235,22 @@
       setPhase("listen");
       $("statusLine").textContent = "⏳ 마이크 준비 중…";
       setAudioSession("play-and-record");
-      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true, channelCount: 1 } })
       .then(function (stream) {
         if (turn !== curTurn || !wantListen) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
         recStream = stream; recBufs = []; recLen = 0; recSpeechMs = 0; recSilenceStart = 0;
         recording = true; recStartT = Date.now();
+        // 아이폰: 마이크가 켜지면 하드웨어 샘플레이트가 바뀌어, 미리 만든 오디오 장치로 녹음하면
+        // 소리가 뭉개지는 버그가 있음 → 마이크를 켠 뒤 오디오 장치를 새로 만듦
+        if (isIOS) {
+          try {
+            var AC2 = window.AudioContext || window.webkitAudioContext;
+            var fresh = new AC2();
+            try { fresh.resume(); } catch (e) {}
+            if (actx && actx !== fresh) { try { actx.close(); } catch (e) {} }
+            actx = ctx = fresh;
+          } catch (e) {}
+        }
         try { ctx.resume(); } catch (e) {}
         recSrc = ctx.createMediaStreamSource(stream);
         recNode = (ctx.createScriptProcessor || ctx.createJavaScriptNode).call(ctx, 4096, 1, 1);
@@ -1302,11 +1314,16 @@
         return;
       }
       logSR("녹음 종료 " + (len / sr).toFixed(1) + "초");
-      handleUserAudio(encodeWav(bufs, len, sr, 16000), Math.max(1, Math.round(len / sr)));
+      handleUserAudio(encodeWav(bufs, len, sr, 16000), Math.max(1, Math.round(len / sr)), (len / sr));
     }
     function encodeWav(bufs, len, inRate, outRate) {
       var all = new Float32Array(len), off = 0;
       for (var i = 0; i < bufs.length; i++) { all.set(bufs[i], off); off += bufs[i].length; }
+      // 작게 녹음된 목소리는 키워서(최대 8배) 알아듣기 쉽게
+      var peak = 0;
+      for (var pi = 0; pi < len; pi++) { var av = Math.abs(all[pi]); if (av > peak) peak = av; }
+      var gain = peak > 0 ? Math.min(8, 0.9 / peak) : 1;
+      if (gain > 1.05) for (var gi = 0; gi < len; gi++) all[gi] *= gain;
       var ratio = inRate / outRate, outLen = Math.floor(len / ratio), pcm = new Int16Array(outLen);
       for (var j = 0; j < outLen; j++) {
         var st = Math.floor(j * ratio), en = Math.min(len, Math.floor((j + 1) * ratio)), acc = 0, n = 0;
@@ -1329,7 +1346,13 @@
     function handleUserAudio(b64, secs) {
       stopListening();
       cancelSpeech();
-      chats[currentLang].push({ sender: "user", target: "🎙️ 음성 " + secs + "초 · 알아듣는 중…", audioB64: b64, pending: true });
+      var url = "";
+      try {
+        var bin = atob(b64), arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        url = URL.createObjectURL(new Blob([arr], { type: "audio/wav" }));
+      } catch (e) {}
+      chats[currentLang].push({ sender: "user", target: "🎙️ 음성 " + secs + "초 · 알아듣는 중…", audioB64: b64, audioUrl: url, pending: true });
       bumpStat("turns", 1);
       renderChat();
       setPhase("think");
@@ -1555,7 +1578,7 @@
         "5b. 'kor': how 'target' SOUNDS, written in Korean Hangul letters (한글 발음 표기) so a Korean beginner can read it aloud. Example: " + KOR_EXAMPLE[currentLang],
         "6. 'correction': if the learner's LAST message has a grammar mistake, wrong word, or unnatural expression, return {\"original\": learner's text, \"fixed\": natural native expression, \"reason\": short reason in Korean}. If the learner wrote/spoke in Korean, put how to say it in " + info.langName + " in 'fixed'. If it was already natural, return null.",
         "7. The learner's text comes from speech recognition, so ignore small recognition errors when understanding meaning.",
-        (pendingAudioMsg() ? "8. The learner's LAST message is an AUDIO recording. Put an exact transcription of what they actually said in 'heard' (in the language they spoke; Korean if they spoke Korean). Treat 'heard' as the learner's message for your reply and for 'correction'. If the audio is silent or unintelligible, set 'heard' to \"\" and in 'target' kindly ask them to say it again.\n" : "") +
+        (pendingAudioMsg() ? "8. The learner's LAST message is an AUDIO recording of a Korean learner speaking " + info.langName + " (they may also speak Korean). FIRST listen carefully and write a VERBATIM transcription in 'heard' - exactly the words you hear, including their mistakes. Do NOT guess, complete, or invent words, and do NOT copy text from earlier messages. If the audio is silent, noise only, or you are not sure what was said, set 'heard' to \"\" and in 'target' kindly ask them to say it again (do not pretend you understood). Then reply to 'heard' as the learner's message and use it for 'correction'.\n" : "") +
         "Respond with JSON only: {" + (pendingAudioMsg() ? "\"heard\":\"...\"," : "") + "\"target\":\"...\",\"reading\":\"...\",\"kor\":\"...\",\"ko\":\"...\",\"correction\":null}"
       ].join("\n");
     }
@@ -1652,6 +1675,12 @@
         lite.sort(function (a, b) { return (parseFloat((b.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0) - (parseFloat((a.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0); });
         if (preferred && /lite/.test(preferred)) { lite.splice(lite.indexOf(preferred), 1); lite.unshift(preferred); }
         list = lite.concat(all.filter(function (m) { return !/lite/.test(m); }));
+      }
+      if (pendingAudioMsg()) {
+        // 음성 받아쓰기는 lite 모델이 약해서 헛소리를 만들기 쉬움 → 일반 flash 모델 우선
+        var full = all.filter(function (m) { return /flash/.test(m) && !/lite/.test(m); });
+        full.sort(function (a, b) { return (parseFloat((b.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0) - (parseFloat((a.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0); });
+        list = full.concat(list.filter(function (m) { return full.indexOf(m) === -1; }));
       }
       list = list.slice(0, maxTries || 8);
       var i = 0, attempts = [], noThink = {};
@@ -1769,6 +1798,13 @@
       renderChat();
       resumeListen();
     }
+    window.__playMine = function (i) {
+      var m = chats[currentLang][i];
+      if (!m || !m.audioUrl) return;
+      if (isCalling) stopCall();
+      cancelSpeech();
+      try { var a = new Audio(m.audioUrl); a.play().catch(function () { toast("녹음을 재생할 수 없어요"); }); } catch (e) {}
+    };
     window.__retryAI = function () {
       var l = chats[currentLang];
       for (var i = l.length - 1; i >= 0; i--) if (l[i].sender === "sys" && l[i].retry) { l.splice(i, 1); break; }
@@ -1787,7 +1823,7 @@
       callGemini(apiKey, {
         systemInstruction: { parts: [{ text: buildSystemPrompt() }] },
         contents: buildContents()
-      }, { responseMimeType: "application/json", temperature: 0.8, maxOutputTokens: 700 })
+      }, { responseMimeType: "application/json", temperature: pendingAudioMsg() ? 0.3 : 0.8, maxOutputTokens: 700 })
       .then(function (res) {
         if (langAtRequest !== currentLang) return;
         lastLatency = ((Date.now() - reqStart) / 1000).toFixed(1) + "초 · " + res.model;
