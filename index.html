@@ -1043,18 +1043,45 @@
       return a + (isCJK() ? "" : " ") + b;
     }
 
-    function ensureRec() {
-      if (rec) return rec;
+    // 음성인식 진단 기록 (설정 화면에 표시)
+    var srLog = [];
+    function logSR(msg) {
+      var d = new Date();
+      srLog.push(pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds()) + " " + msg);
+      if (srLog.length > 12) srLog.shift();
+    }
+
+    // 매 턴마다 '새' 음성인식 객체를 만듦: 한 객체를 계속 재사용하면
+    // 아이폰 사파리·일부 안드로이드에서 첫 대화 이후 인식이 멈추는 버그가 있음
+    var recSeq = 0, startWatch = null, retryCount = 0;
+    function createRec() {
       var SR = getSR();
       if (!SR) return null;
-      rec = new SR();
-      rec.continuous = false;       // continuous=true 가 모바일 중복 인식의 주범 → 짧은 세션을 자동 재시작
-      rec.interimResults = true;
-      rec.maxAlternatives = 1;
+      if (rec) {
+        var old = rec;
+        rec = null;
+        old.onstart = old.onresult = old.onerror = old.onend = null;
+        try { old.abort(); } catch (e) {}
+        recActive = false;
+      }
+      var r = new SR();
+      var my = ++recSeq;
+      r.continuous = false;       // continuous=true 가 모바일 중복 인식의 주범 → 짧은 세션을 자동 재시작
+      r.interimResults = true;
+      r.maxAlternatives = 1;
+      r.lang = LANGS[currentLang].code;
+      function mine() { return rec === r && recSeq === my; }
 
-      rec.onstart = function () { recActive = true; };
+      r.onstart = function () {
+        if (!mine()) return;
+        clearTimeout(startWatch);
+        recActive = true;
+        retryCount = 0;
+        logSR("시작");
+      };
 
-      rec.onresult = function (e) {
+      r.onresult = function (e) {
+        if (!mine()) return;
         var fin = "", inter = "";
         for (var i = 0; i < e.results.length; i++) {
           var t = e.results[i][0].transcript;
@@ -1066,21 +1093,27 @@
         if (recTurn === curTurn) showLive(joinText(committed, joinText(sesFinal, sesInterim)));
       };
 
-      rec.onerror = function (e) {
+      r.onerror = function (e) {
+        if (!mine()) return;
         var err = e && e.error;
+        logSR("오류: " + err);
         if (err === "not-allowed" || err === "service-not-allowed") {
+          // 첫 턴이 아니면 일시적인 거부일 수 있어 한 번 더 시도
+          if (retryCount < 1 && curTurn > 1) { retryCount++; return; }
           wantListen = false; recBlocked = true;
           toast("🎤 마이크 권한이 막혀 있어요. 주소창의 🔒(사이트 설정) → 마이크 '허용' 후 새로고침해 주세요.", 6000);
           setPhase("type");
         } else if (err === "audio-capture") {
+          // 코치 음성 재생 직후 마이크가 잠깐 바쁜 경우가 많음 → 잠시 후 재시도
+          if (retryCount < 3) { retryCount++; return; }
           wantListen = false;
-          toast("마이크를 찾을 수 없어요. 다른 앱이 마이크를 쓰고 있는지 확인해 주세요.", 5000);
+          toast("마이크를 쓸 수 없어요. 다른 앱이 마이크를 쓰고 있는지 확인해 주세요.", 5000);
           setPhase("type");
         } else if (err === "network") {
           netErrors++;
-          if (netErrors >= 2) {
+          if (netErrors >= 3) {
             wantListen = false;
-            toast("음성인식 서버에 연결할 수 없어요(인터넷/브라우저 확인). 아래 입력창을 이용해 주세요.", 5000);
+            toast("음성인식 서버에 연결할 수 없어요(인터넷 확인). 입력창을 이용해 주세요.", 5000);
             setPhase("type");
           }
         } else if (err === "language-not-supported") {
@@ -1091,12 +1124,15 @@
         // no-speech / aborted 는 onend 에서 자동 재시작
       };
 
-      rec.onend = function () {
+      r.onend = function () {
+        if (!mine()) return;
+        clearTimeout(startWatch);
         recActive = false;
         lastRecEnd = Date.now();
         var piece = (sesFinal || sesInterim).trim();
         sesFinal = ""; sesInterim = "";
         if (recTurn === curTurn && piece) committed = joinText(committed, piece);
+        logSR("종료" + (piece ? " (" + piece.slice(0, 12) + ")" : ""));
 
         if (pendingSend) { pendingSend = false; flushSend(); return; }
 
@@ -1108,51 +1144,71 @@
               if (wantListen && phase === "listen" && committed) finishSpeaking();
             }, 1400);
           }
-          setTimeout(safeStart, 120);
+          // 같은 객체 재시작이 막히는 기기가 있어 새 객체로 다시 시작
+          var delay = retryCount ? 300 * retryCount : 150;
+          setTimeout(function () { if (wantListen && !recActive && phase === "listen") { createRec(); safeStart(); } }, delay);
         }
       };
-      return rec;
+      rec = r;
+      return r;
     }
+    function ensureRec() { return rec || createRec(); }
 
     function safeStart() {
       if (!rec || recActive || !wantListen || !isCalling) return;
       recTurn = curTurn;
+      var r = rec;
       try {
-        rec.lang = LANGS[currentLang].code;
+        r.lang = LANGS[currentLang].code;
         setAudioSession("play-and-record");
         recActive = true;
-        rec.start();
+        r.start();
+        // 2.5초 안에 시작 신호가 없으면 새 객체로 다시 시도
+        clearTimeout(startWatch);
+        startWatch = setTimeout(function () {
+          if (rec !== r || !wantListen) return;
+          logSR("시작 지연 → 재시도");
+          recActive = false;
+          retryCount++;
+          if (retryCount > 3) {
+            wantListen = false;
+            toast("음성인식이 시작되지 않아요. 앱을 새로고침하거나 입력창을 이용해 주세요.", 5000);
+            setPhase("type");
+            return;
+          }
+          createRec(); safeStart();
+        }, 2500);
       } catch (e) {
+        logSR("start 예외: " + (e && e.name));
         recActive = false;
-        setTimeout(function () {
-          if (wantListen && !recActive) { try { recActive = true; rec.start(); } catch (e2) { recActive = false; } }
-        }, 400);
+        setTimeout(function () { if (wantListen && !recActive) { createRec(); safeStart(); } }, 400);
       }
     }
 
     function startListening() {
       if (!isCalling) return;
-      var r = ensureRec();
-      if (!r) {
+      if (!getSR()) {
         if (!srWarned) {
           srWarned = true;
-          toast(inAppBrowser() ? "카카오톡 등 앱 내 브라우저는 음성인식이 안 돼요. 크롬(안드로이드)·사파리(아이폰)로 열어주세요." : "이 브라우저는 음성인식을 지원하지 않아요. 크롬이나 사파리를 사용하거나 아래 입력창을 이용해 주세요.", 6000);
+          toast(inAppBrowser() ? "카카오톡 등 앱 내 브라우저는 음성인식이 안 돼요. 크롬(안드로이드)·사파리(아이폰)로 열어주세요." : "이 브라우저는 음성인식을 지원하지 않아요. 크롬이나 사파리를 사용하거나 입력창을 이용해 주세요.", 6000);
         }
         setPhase("type");
         return;
       }
       curTurn++;
       committed = ""; sesFinal = ""; sesInterim = "";
-      netErrors = 0;
+      netErrors = 0; retryCount = 0;
       recBlocked = false;
       wantListen = true;
       setPhase("listen");
+      createRec();          // 턴마다 새 객체
       safeStart();
     }
 
     function stopListening() {
       wantListen = false;
       pendingSend = false;
+      clearTimeout(startWatch);
       if (autoTimer) { clearTimeout(autoTimer); autoTimer = null; }
       curTurn++;
       if (rec && recActive) { try { rec.abort(); } catch (e) {} }
@@ -1894,6 +1950,7 @@
       lines.push("보안 연결(HTTPS): <b>" + (secure ? "OK ✅" : "아님 ⚠️ — 마이크가 막힐 수 있어요") + "</b>");
       if (inAppBrowser()) lines.push("⚠️ <b>앱 내 브라우저</b>로 열려 있어요. 크롬/사파리로 열어야 음성인식이 됩니다.");
       if (!sr) lines.push("👉 안드로이드는 <b>크롬</b>, 아이폰은 <b>사파리</b>에서 열어주세요.");
+      if (srLog.length) lines.push("<span style='font-size:11px'>최근 음성인식 기록: " + srLog.slice(-8).map(esc).join(" · ") + "</span>");
       $("diagBox").innerHTML = lines.join("<br>");
     }
     function renderSettings() {
