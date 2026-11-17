@@ -391,7 +391,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-7</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-8</span></div>
 
 
       <div class="panel">
@@ -1110,7 +1110,9 @@
       var my = ++recSeq;
       // 안드로이드: continuous=true 가 중복 인식의 주범 → 짧은 세션 자동 재시작
       // 아이폰: 재시작이 잘 안 되므로 한 세션으로 계속 듣기
-      r.continuous = false;   // 아이폰은 continuous=true 일 때 결과를 안 주는 버그가 있음
+      // 아이폰: continuous=false 면 첫 마디(예: '喂')만 받아쓰고 나머지는 버려짐 → 버튼을 누를 때까지 계속 듣기
+      // 안드로이드: continuous=true 가 중복 인식을 만들어서 짧은 세션을 자동 재시작
+      r.continuous = isIOS;
       r.interimResults = true;
       r.maxAlternatives = 1;
       r.lang = LANGS[currentLang].code;
@@ -1186,7 +1188,7 @@
         if (recTurn === curTurn && piece) committed = joinText(committed, piece);
         logSR("종료" + (piece ? " (" + piece.slice(0, 12) + ")" : ""));
 
-        if (pendingSend) { pendingSend = false; flushSend(); return; }
+        if (pendingSend) { pendingSend = false; afterStop(); return; }
 
         if (wantListen && isCalling && phase === "listen" && isIOS) {
           if (committed) {
@@ -1482,10 +1484,18 @@
       if (rec && recActive) {
         pendingSend = true;
         try { rec.stop(); } catch (e) {}
-        setTimeout(function () { if (pendingSend) { pendingSend = false; flushSend(); } }, 1500);
+        setTimeout(function () { if (pendingSend) { pendingSend = false; afterStop(); } }, 1500);
       } else {
-        flushSend();
+        afterStop();
       }
+    }
+    // 말하기를 마친 뒤: 인식된 글자를 보여주고 확인·고치기 (자동 전송 모드면 바로 보냄)
+    function afterStop() {
+      var t = joinText(committed, sesFinal || sesInterim).trim();
+      if (autoSend || !t || isEcho(t)) { flushSend(); return; }
+      committed = t; sesFinal = ""; sesInterim = "";
+      showLive(t);
+      setPhase("confirm");
     }
 
     function flushSend() {
@@ -2316,7 +2326,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-7 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-8 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
