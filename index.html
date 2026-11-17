@@ -391,7 +391,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-9</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-10</span></div>
 
 
       <div class="panel">
@@ -727,7 +727,7 @@
         st.textContent = lastLatency ? "🔊 코치가 말하는 중 · ⚡ " + lastLatency : "🔊 코치가 말하는 중 · 말풍선을 누르면 다시 들어요";
         lastLatency = "";
       } else if (p === "listen") {
-        big.classList.add("listen"); lbl.textContent = autoSend ? "듣는 중…" : "다 말했으면 탭";
+        big.classList.add("listen"); lbl.textContent = (autoSend || aiRecMode) ? "듣는 중…" : "다 말했으면 탭";
         av.classList.add("listening");
         st.textContent = autoSend ? "🎙️ 말씀하세요 · 멈추면 자동 전송돼요" : "🎙️ 말씀하세요 · 끝나면 가운데 버튼을 누르세요";
       } else if (p === "kbd") {
@@ -1260,7 +1260,7 @@
        마이크로 직접 녹음해서 Gemini에게 '받아쓰기 + 답변'을 한 번에 요청함 */
     var actx = null, recStream = null, recNode = null, recSrc = null, recBufs = [], recLen = 0;
     var recording = false, aiRecMode = false, recStartT = 0, recSpeechMs = 0, recSilenceStart = 0;
-    function sttMode() { return getStore("s365_stt2", "browser"); }
+    function sttMode() { return getStore("s365_stt3", isIOS ? "ai" : "browser"); }
     function useAISTT() {
       if (getProvider() !== "gemini" || !providerKey()) return false;
       return sttMode() === "ai" || !getSR();
@@ -1274,9 +1274,12 @@
       try { if (actx.state !== "running") actx.resume(); } catch (e) {}
       return actx;
     }
+    // 녹음은 MediaRecorder(휴대폰이 직접 인코딩 → 소리 왜곡 없음)로 하고,
+    // 오디오 장치는 음량 표시·말 끝 감지에만 사용
+    var mr = null, mrChunks = [], mrMime = "", anaNode = null, levelTimer = null, levelAlive = false;
     function startRecording() {
-      var ctx = getACtx();   // 버튼을 누른 순간에 호출되어야 아이폰에서 동작
-      if (!ctx || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      var ctx = getACtx();   // 버튼을 누른 순간에 깨워야 아이폰에서 음량 표시가 동작
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         toast("이 브라우저에서는 마이크 녹음을 쓸 수 없어요. 입력창을 이용해 주세요.", 4000);
         setPhase("type");
         return;
@@ -1287,86 +1290,166 @@
       setPhase("listen");
       $("statusLine").textContent = "⏳ 마이크 준비 중…";
       setAudioSession("play-and-record");
-      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: false, autoGainControl: true, channelCount: 1 } })
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
       .then(function (stream) {
         if (turn !== curTurn || !wantListen) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
-        recStream = stream; recBufs = []; recLen = 0; recSpeechMs = 0; recSilenceStart = 0;
+        recStream = stream; recBufs = []; recLen = 0; recSpeechMs = 0; recSilenceStart = 0; levelAlive = false;
         recording = true; recStartT = Date.now();
-        // 아이폰: 마이크가 켜지면 하드웨어 샘플레이트가 바뀌어, 미리 만든 오디오 장치로 녹음하면
-        // 소리가 뭉개지는 버그가 있음 → 마이크를 켠 뒤 오디오 장치를 새로 만듦
-        if (isIOS) {
+        if (window.MediaRecorder) {
+          var opts = {};
           try {
-            var AC2 = window.AudioContext || window.webkitAudioContext;
-            var fresh = new AC2();
-            try { fresh.resume(); } catch (e) {}
-            if (actx && actx !== fresh) { try { actx.close(); } catch (e) {} }
-            actx = ctx = fresh;
+            if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/mp4")) opts.mimeType = "audio/mp4";
+            else if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported("audio/webm")) opts.mimeType = "audio/webm";
           } catch (e) {}
+          mrChunks = [];
+          try { mr = new MediaRecorder(stream, opts); } catch (e) { mr = new MediaRecorder(stream); }
+          mrMime = mr.mimeType || opts.mimeType || "audio/mp4";
+          mr.ondataavailable = function (e) { if (e.data && e.data.size) mrChunks.push(e.data); };
+          mr.start(250);
+          // 음량 측정 (실패해도 녹음에는 영향 없음)
+          if (ctx) {
+            try {
+              ctx.resume();
+              recSrc = ctx.createMediaStreamSource(stream);
+              anaNode = ctx.createAnalyser();
+              anaNode.fftSize = 1024;
+              recSrc.connect(anaNode);
+              var fb = new Float32Array(anaNode.fftSize), bb = new Uint8Array(anaNode.fftSize);
+              levelTimer = setInterval(function () {
+                if (!recording || !anaNode) return;
+                var sum = 0, n = anaNode.fftSize;
+                if (anaNode.getFloatTimeDomainData) { anaNode.getFloatTimeDomainData(fb); for (var i = 0; i < n; i++) sum += fb[i] * fb[i]; }
+                else { anaNode.getByteTimeDomainData(bb); for (var j = 0; j < n; j++) { var v = (bb[j] - 128) / 128; sum += v * v; } }
+                var rms = Math.sqrt(sum / n);
+                if (rms > 0.0005) levelAlive = true;
+                else if (!levelAlive && Date.now() - recStartT > 2000 && phase === "listen") $("statusLine").textContent = "🎙️ 말씀하세요 · 다 말했으면 가운데 버튼";
+                onLevel(rms, 100);
+              }, 100);
+            } catch (e) {}
+          }
+        } else {
+          // MediaRecorder 미지원 브라우저: 직접 샘플 수집
+          try { ctx.resume(); } catch (e) {}
+          recSrc = ctx.createMediaStreamSource(stream);
+          recNode = (ctx.createScriptProcessor || ctx.createJavaScriptNode).call(ctx, 4096, 1, 1);
+          recNode.onaudioprocess = function (e) {
+            if (!recording) return;
+            var d = e.inputBuffer.getChannelData(0);
+            recBufs.push(new Float32Array(d));
+            recLen += d.length;
+            var sum = 0;
+            for (var i = 0; i < d.length; i += 4) sum += d[i] * d[i];
+            levelAlive = true;
+            onLevel(Math.sqrt(sum / (d.length / 4)), d.length / ctx.sampleRate * 1000);
+          };
+          recSrc.connect(recNode);
+          recNode.connect(ctx.destination);
         }
-        try { ctx.resume(); } catch (e) {}
-        recSrc = ctx.createMediaStreamSource(stream);
-        recNode = (ctx.createScriptProcessor || ctx.createJavaScriptNode).call(ctx, 4096, 1, 1);
-        recNode.onaudioprocess = function (e) {
-          if (!recording) return;
-          var d = e.inputBuffer.getChannelData(0);
-          recBufs.push(new Float32Array(d));
-          recLen += d.length;
-          var sum = 0;
-          for (var i = 0; i < d.length; i += 4) sum += d[i] * d[i];
-          onLevel(Math.sqrt(sum / (d.length / 4)), d.length / ctx.sampleRate * 1000);
-        };
-        recSrc.connect(recNode);
-        recNode.connect(ctx.destination);
-        logSR("녹음 시작");
-        $("statusLine").textContent = autoSend ? "🎙️ 듣고 있어요 · 멈추면 자동 전송돼요" : "🎙️ 듣고 있어요 · 다 말했으면 가운데 버튼";
+        logSR("녹음 시작" + (mr ? " (" + mrMime + ")" : ""));
+        $("statusLine").textContent = "🎙️ 말씀하세요 · 말을 멈추면 자동으로 보내요";
       })
       .catch(function (err) {
         logSR("마이크 오류: " + (err && err.name));
         wantListen = false; aiRecMode = false;
         if (err && (err.name === "NotAllowedError" || err.name === "SecurityError"))
-          toast("🎤 마이크 권한이 필요해요. 설정 → 크롬(또는 사파리) → 마이크 허용 후 다시 시도해 주세요.", 6000);
+          toast("🎤 마이크 권한이 필요해요. 아이폰 설정 → 크롬 → 마이크를 켠 뒤 다시 시도해 주세요.", 6000);
         else toast("마이크를 켤 수 없어요 (" + (err && err.name) + ")", 4000);
         setPhase("type");
       });
     }
     function onLevel(rms, ms) {
-      if (rms > 0.015) {
+      if (rms > 0.02) {
         recSpeechMs += ms; recSilenceStart = 0;
         var w = $("waves"); w.classList.add("loud");
         clearTimeout(onLevel._t);
         onLevel._t = setTimeout(function () { w.classList.remove("loud"); }, 300);
-        if (recSpeechMs > 200) showLive("🎙️ 말하는 중…");
-      } else if (recSpeechMs > 300) {
+        if (recSpeechMs > 200) showLive("🎙️ 듣고 있어요…");
+      } else if (recSpeechMs > 400) {
         if (!recSilenceStart) recSilenceStart = Date.now();
-        if (autoSend && Date.now() - recSilenceStart > 1500) { finishRecording(); return; }
+        // 말을 하다 1.6초 조용하면 자동으로 보냄 (버튼을 안 눌러도 됨)
+        if (Date.now() - recSilenceStart > 1600) { finishRecording(); return; }
       }
       if (Date.now() - recStartT > 45000) finishRecording();
     }
-    function stopRecordingTracks() {
-      recording = false;
+    function releaseMic() {
+      clearInterval(levelTimer); levelTimer = null;
       try { if (recNode) { recNode.onaudioprocess = null; recNode.disconnect(); } } catch (e) {}
       try { if (recSrc) recSrc.disconnect(); } catch (e) {}
+      try { if (anaNode) anaNode.disconnect(); } catch (e) {}
       if (recStream) recStream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
-      recNode = recSrc = recStream = null;
-      aiRecMode = false;
+      recNode = recSrc = recStream = anaNode = null;
       lastRecEnd = Date.now();
+    }
+    function stopRecordingTracks() {
+      recording = false;
+      if (mr) { var m = mr; mr = null; m.ondataavailable = null; m.onstop = null; try { if (m.state !== "inactive") m.stop(); } catch (e) {} }
+      mrChunks = [];
+      releaseMic();
+      aiRecMode = false;
     }
     function finishRecording() {
       if (!aiRecMode) return;
-      var bufs = recBufs, len = recLen, sr = actx ? actx.sampleRate : 48000, speech = recSpeechMs;
-      stopRecordingTracks();
-      recBufs = []; recLen = 0;
+      var secs = (Date.now() - recStartT) / 1000, speech = recSpeechMs, alive = levelAlive;
       wantListen = false;
       curTurn++;
       showLive("");
-      if (!len || speech < 250) {
+      recording = false;
+      aiRecMode = false;
+      // 음량을 잴 수 있었는데 말소리가 거의 없으면 다시
+      if (secs < 0.6 || (alive && speech < 250)) {
+        if (mr) { try { mr.onstop = null; mr.stop(); } catch (e) {} mr = null; }
+        mrChunks = []; releaseMic();
         logSR("녹음 종료 (목소리 없음)");
         toast("목소리가 잘 안 들렸어요. 조금 더 크게 말해 주세요.", 2500);
         resumeListen();
         return;
       }
+      setPhase("think");
+      if (mr) {
+        var m = mr; mr = null;
+        m.onstop = function () {
+          var blob = new Blob(mrChunks, { type: mrMime }); mrChunks = [];
+          releaseMic();
+          logSR("녹음 종료 " + secs.toFixed(1) + "초 " + Math.round(blob.size / 1024) + "KB");
+          blobToWav(blob, function (b64, mime) { handleUserAudio(b64, Math.max(1, Math.round(secs)), mime); });
+        };
+        try { m.stop(); } catch (e) { m.onstop(); }
+        return;
+      }
+      var bufs = recBufs, len = recLen, sr = actx ? actx.sampleRate : 48000;
+      recBufs = []; recLen = 0;
+      releaseMic();
       logSR("녹음 종료 " + (len / sr).toFixed(1) + "초");
-      handleUserAudio(encodeWav(bufs, len, sr, 16000), Math.max(1, Math.round(len / sr)), (len / sr));
+      handleUserAudio(encodeWav(bufs, len, sr, 16000), Math.max(1, Math.round(len / sr)), "audio/wav");
+    }
+    // 휴대폰 녹음 파일(mp4/webm) → 16kHz WAV 로 변환 (실패하면 원본 그대로 전송)
+    function blobToWav(blob, cb) {
+      function raw() {
+        var fr = new FileReader();
+        fr.onload = function () { cb(String(fr.result).split(",")[1] || "", (mrMime || "audio/mp4").split(";")[0]); };
+        fr.readAsDataURL(blob);
+      }
+      var OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!OAC) { raw(); return; }
+      var fr2 = new FileReader();
+      fr2.onload = function () {
+        var oc;
+        try { oc = new OAC(1, 16000, 16000); } catch (e) { try { oc = new OAC(1, 44100, 44100); } catch (e2) { raw(); return; } }
+        var done = false;
+        function ok(buf) {
+          if (done) return; done = true;
+          try {
+            var d = buf.getChannelData(0);
+            cb(encodeWav([d], d.length, buf.sampleRate, 16000), "audio/wav");
+          } catch (e) { raw(); }
+        }
+        function bad() { if (done) return; done = true; logSR("변환 실패 → 원본 전송"); raw(); }
+        try {
+          var pr = oc.decodeAudioData(fr2.result, ok, bad);
+          if (pr && pr.then) pr.then(ok, bad);
+        } catch (e) { bad(); }
+      };
+      fr2.readAsArrayBuffer(blob);
     }
     function encodeWav(bufs, len, inRate, outRate) {
       var all = new Float32Array(len), off = 0;
@@ -1395,16 +1478,17 @@
       for (var c = 0; c < bytes.length; c += CH) bin += String.fromCharCode.apply(null, bytes.subarray(c, c + CH));
       return btoa(bin);
     }
-    function handleUserAudio(b64, secs) {
+    function handleUserAudio(b64, secs, mime) {
+      mime = mime || "audio/wav";
       stopListening();
       cancelSpeech();
       var url = "";
       try {
         var bin = atob(b64), arr = new Uint8Array(bin.length);
         for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-        url = URL.createObjectURL(new Blob([arr], { type: "audio/wav" }));
+        url = URL.createObjectURL(new Blob([arr], { type: mime }));
       } catch (e) {}
-      chats[currentLang].push({ sender: "user", target: "🎙️ 음성 " + secs + "초 · 알아듣는 중…", audioB64: b64, audioUrl: url, pending: true });
+      chats[currentLang].push({ sender: "user", target: "🎙️ 음성 " + secs + "초 · 알아듣는 중…", audioB64: b64, audioMime: mime, audioUrl: url, pending: true });
       bumpStat("turns", 1);
       renderChat();
       setPhase("think");
@@ -1418,7 +1502,7 @@
     }
 
     // ⌨️ 키보드 받아쓰기: 아이폰 자체 받아쓰기(키보드 🎤)를 사용 — 브라우저 음성인식 버그와 무관하고 실시간·수정 가능
-    function kbdMode() { return getStore("s365_kbd", isIOS ? "1" : "0") === "1"; }
+    function kbdMode() { return getStore("s365_kbd2", "0") === "1"; }
     function openKeyboard() {
       wantListen = false;
       setPhase("kbd");
@@ -1697,7 +1781,7 @@
         if (list[i].sender === "sys") continue;
         var role = list[i].sender === "user" ? "user" : "model";
         var parts = list[i].audioB64
-          ? [{ inlineData: { mimeType: "audio/wav", data: list[i].audioB64 } }, { text: "(학습자가 방금 음성으로 말한 내용)" }]
+          ? [{ inlineData: { mimeType: list[i].audioMime || "audio/wav", data: list[i].audioB64 } }, { text: "(학습자가 방금 음성으로 말한 내용)" }]
           : [{ text: list[i].target }];
         var last = contents[contents.length - 1];
         if (last && last.role === role) last.parts = last.parts.concat(parts);
@@ -2346,7 +2430,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-9 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-10 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
@@ -2365,11 +2449,11 @@
       }
     };
     window.__setStt = function (on) {
-      setStore("s365_stt2", on ? "ai" : "browser");
+      setStore("s365_stt3", on ? "ai" : "browser");
       toast(on ? (getProvider() === "gemini" && providerKey() ? "🤖 Gemini가 녹음을 듣고 알아들어요" : "🤖 AI 음성인식은 Gemini 키를 등록해야 동작해요") : "브라우저 음성인식을 사용해요", 2800);
     };
     window.__setKbd = function (on) {
-      setStore("s365_kbd", on ? "1" : "0");
+      setStore("s365_kbd2", on ? "1" : "0");
       toast(on ? "⌨️ 가운데 버튼을 누르면 키보드가 열려요. 키보드의 🎤를 눌러 말하세요" : "앱 음성인식을 사용해요", 3000);
     };
     window.__setTap = function (on) {
