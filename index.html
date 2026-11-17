@@ -4,290 +4,290 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Study365" />
   <meta name="theme-color" id="metaTheme" content="#FF5A26" />
   <title>Study 365 · 1:1 AI 전화외국어</title>
   <style>
     :root {
-      --accent: #FF5A26;
-      --accent-dark: #E04616;
-      --accent-soft: #FFF1EC;
-      --accent-border: #FED7AA;
-      --accent-light: #FDBA74;
-      --accent-rgb: 255, 90, 38;
-      --bg: #F3F4F6;
-      --surface: #FFFFFF;
-      --surface2: #F9FAFB;
-      --text: #111317;
-      --sub: #6B7280;
-      --border: #E5E7EB;
-      --card: #16181D;
-      --card2: #1F2229;
-      --warn-bg: #FFFBEB;
-      --warn-border: #FDE68A;
-      --warn-text: #92400E;
+      --accent: #FF5A26; --accent-dark: #E04616; --accent-soft: #FFF1EC; --accent-border: #FED7AA;
+      --accent-light: #FDBA74; --accent-rgb: 255, 90, 38;
+      --bg: #F2F3F5; --surface: #FFFFFF; --surface2: #F7F8FA; --text: #111317; --sub: #6B7280; --border: #E6E8EC;
+      --bubble: #FFFFFF; --green: #10B981; --red: #EF4444;
+      --warn-bg: #FFFBEB; --warn-border: #FDE68A; --warn-text: #92400E;
+      --tabbar-h: 62px;
+      --safe-b: env(safe-area-inset-bottom, 0px);
     }
     [data-mode="dark"] {
-      --bg: #0B0C0F;
-      --surface: #16181D;
-      --surface2: #1E2127;
-      --text: #F3F4F6;
-      --sub: #9CA3AF;
-      --border: #2E323A;
-      --card: #23262E;
-      --card2: #2C3039;
-      --warn-bg: #2A2412;
-      --warn-border: #5C4A1A;
-      --warn-text: #FCD34D;
+      --bg: #0B0C0F; --surface: #15171C; --surface2: #1C1F25; --text: #F3F4F6; --sub: #9CA3AF; --border: #2A2E36;
+      --bubble: #1F2229; --warn-bg: #2A2412; --warn-border: #5C4A1A; --warn-text: #FCD34D;
     }
-
-    * {
-      box-sizing: border-box; margin: 0; padding: 0;
-      -webkit-tap-highlight-color: transparent;
-      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "PingFang SC", "Hiragino Kaku Gothic ProN", sans-serif;
-    }
-    html, body { width: 100%; overflow-x: hidden; background: var(--bg); color: var(--text); }
-    body { min-height: 100vh; display: flex; justify-content: center; transition: background .2s; }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent;
+        font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "PingFang SC", "Hiragino Kaku Gothic ProN", sans-serif; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+    body { display: flex; justify-content: center; }
+    button { font: inherit; color: inherit; }
 
     .app {
-      width: 100%; max-width: 460px; min-height: 100vh; background: var(--surface);
-      display: flex; flex-direction: column; position: relative;
-      box-shadow: 0 0 36px rgba(0,0,0,0.08); padding-bottom: 108px;
+      width: 100%; max-width: 480px; height: 100%; height: 100dvh; background: var(--bg);
+      position: relative; display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 0 40px rgba(0,0,0,.06);
     }
 
-    .header {
-      padding: calc(12px + env(safe-area-inset-top)) 16px 10px;
-      display: flex; align-items: center; justify-content: space-between; gap: 8px;
-      background: var(--surface); position: sticky; top: 0; z-index: 30;
+    /* ---------- 상단 바 ---------- */
+    .topbar {
+      flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: calc(10px + env(safe-area-inset-top)) 16px 10px; background: var(--surface);
+      border-bottom: 1px solid var(--border);
     }
-    .brand { font-size: 21px; font-weight: 900; color: var(--accent); letter-spacing: -0.5px; flex-shrink: 0; }
+    .brand { font-size: 20px; font-weight: 900; color: var(--accent); letter-spacing: -.5px; }
     .brand span { color: var(--text); }
-    .top-btns { display: flex; gap: 6px; flex-shrink: 0; }
-    .top-btn {
-      background: var(--surface2); border: 1px solid var(--border); color: var(--text);
-      font-size: 11.5px; font-weight: 700; padding: 6px 10px; border-radius: 999px;
-      cursor: pointer; white-space: nowrap;
-    }
-
-    .lang-bar {
-      padding: 6px 16px 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
-      background: var(--surface); border-bottom: 1px solid var(--border); position: relative; z-index: 25;
-    }
+    .lang-seg { display: flex; background: var(--surface2); border: 1px solid var(--border); border-radius: 999px; padding: 3px; gap: 2px; }
     .lang-btn {
-      padding: 10px 4px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface2);
-      color: var(--sub); font-size: 13px; font-weight: 800; cursor: pointer; text-align: center;
-      white-space: nowrap; user-select: none; touch-action: manipulation;
+      border: none; background: transparent; padding: 6px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 800;
+      color: var(--sub); cursor: pointer; white-space: nowrap;
     }
-    .lang-btn.active {
-      background: var(--accent); border-color: var(--accent); color: #FFFFFF;
-      box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+    .lang-btn.active { background: var(--accent); color: #fff; box-shadow: 0 3px 10px rgba(var(--accent-rgb), .3); }
+
+    /* ---------- 화면(탭) ---------- */
+    .views { flex: 1 1 auto; position: relative; min-height: 0; }
+    .view { position: absolute; inset: 0; display: none; flex-direction: column; min-height: 0; }
+    .view.active { display: flex; }
+    .scroll { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .page { padding: 16px 16px calc(24px + var(--tabbar-h) + var(--safe-b)); display: flex; flex-direction: column; gap: 12px; }
+    .page-title { font-size: 20px; font-weight: 900; letter-spacing: -.4px; }
+    .page-sub { font-size: 12.5px; color: var(--sub); margin-top: -6px; }
+
+    /* ---------- 통화 화면 ---------- */
+    .caller {
+      flex: 0 0 auto; background: var(--surface); padding: 12px 16px 10px; border-bottom: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 10px;
     }
-
-    .main { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; flex: 1; }
-
-    .stage-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+    .caller-row { display: flex; align-items: center; gap: 12px; }
+    .avatar {
+      width: 48px; height: 48px; border-radius: 50%; flex-shrink: 0; position: relative;
+      background: linear-gradient(135deg, var(--accent), var(--accent-light));
+      display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 900; font-size: 17px;
+    }
+    .avatar::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid transparent; }
+    .avatar.ringing::after { border-color: var(--accent); animation: ring 1.2s infinite; }
+    .avatar.listening::after { border-color: var(--green); animation: ring 1.6s infinite; }
+    @keyframes ring { 0% { transform: scale(1); opacity: .95; } 100% { transform: scale(1.28); opacity: 0; } }
+    .caller-info { flex: 1; min-width: 0; }
+    .caller-name { font-size: 15.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .caller-role { font-size: 11.5px; color: var(--sub); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .caller-side { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; flex-shrink: 0; }
+    .timer {
+      font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--sub);
+      background: var(--surface2); border: 1px solid var(--border); padding: 4px 9px; border-radius: 999px;
+    }
+    .timer.live { color: var(--green); border-color: rgba(16,185,129,.4); background: rgba(16,185,129,.08); }
+    .chip-btn {
+      border: 1px solid var(--border); background: var(--surface2); color: var(--sub); font-size: 11px; font-weight: 800;
+      padding: 4px 9px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+    }
+    .chip-btn.on { background: var(--accent-soft); color: var(--accent-dark); border-color: var(--accent-border); }
+    [data-mode="dark"] .chip-btn.on { color: var(--accent-light); }
     .stage-select {
-      flex: 1 1 auto; min-width: 0; background: var(--accent-soft); color: var(--accent-dark);
-      border: none; font-size: 12px; font-weight: 800; padding: 7px 10px; border-radius: 999px;
-      outline: none; text-overflow: ellipsis;
+      width: 100%; background: var(--accent-soft); color: var(--accent-dark); border: none; font-size: 12.5px; font-weight: 800;
+      padding: 8px 12px; border-radius: 12px; outline: none; -webkit-appearance: none; appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+      background-position: calc(100% - 16px) 52%, calc(100% - 11px) 52%; background-size: 5px 5px; background-repeat: no-repeat;
     }
     [data-mode="dark"] .stage-select { color: var(--accent-light); }
-    .call-timer {
-      flex: 0 0 auto; white-space: nowrap; font-size: 11.5px; font-weight: 800; color: var(--sub);
-      background: var(--surface2); padding: 7px 10px; border-radius: 999px;
-      font-variant-numeric: tabular-nums; letter-spacing: -0.2px;
-    }
 
-    .phone-card {
-      background: var(--card); color: #FFFFFF; border-radius: 22px; padding: 18px 16px;
-      box-shadow: 0 12px 28px rgba(22, 24, 29, 0.16); display: flex; flex-direction: column; gap: 13px;
+    /* 메신저 */
+    .chat { flex: 1 1 auto; min-height: 0; padding: 14px 12px 10px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { display: flex; flex-direction: column; max-width: 86%; }
+    .msg.coach { align-self: flex-start; }
+    .msg.user { align-self: flex-end; align-items: flex-end; }
+    .msg-row { display: flex; align-items: flex-end; gap: 7px; }
+    .mini-av {
+      width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; font-size: 11px; font-weight: 900; color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--accent-light)); display: flex; align-items: center; justify-content: center;
     }
-    .caller-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .caller-profile { display: flex; align-items: center; gap: 11px; min-width: 0; }
-    .caller-avatar {
-      width: 46px; height: 46px; border-radius: 50%;
-      background: linear-gradient(135deg, var(--accent), var(--accent-light));
-      display: flex; align-items: center; justify-content: center;
-      font-size: 17px; font-weight: 900; color: #FFFFFF; position: relative; flex-shrink: 0;
+    .bubble { padding: 10px 13px; border-radius: 18px; font-size: 15px; line-height: 1.5; word-break: break-word; }
+    .msg.coach .bubble {
+      background: var(--bubble); border: 1px solid var(--border); border-bottom-left-radius: 6px; cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0,0,0,.03);
     }
-    .caller-avatar.ringing::after {
-      content: ""; position: absolute; inset: -5px; border-radius: 50%;
-      border: 2px solid var(--accent); animation: ringPulse 1.2s infinite;
+    .msg.coach .bubble:active { transform: scale(.985); }
+    .msg.coach.speaking .bubble { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .12); }
+    .msg.user .bubble { background: var(--accent); color: #fff; border-bottom-right-radius: 6px; font-weight: 600; }
+    .msg.user.ghost .bubble { background: transparent; color: var(--accent); border: 1.5px dashed var(--accent); font-weight: 600; }
+    .b-target { font-weight: 700; }
+    .b-sub { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: 3px; }
+    .b-reading { font-size: 12px; color: var(--sub); }
+    .b-kor { font-size: 12.5px; color: var(--green); font-weight: 600; }
+    .b-ko { font-size: 12.5px; color: var(--sub); }
+    .b-play { font-size: 11px; color: var(--sub); margin-top: 4px; }
+    .hide-sub .b-sub { display: none; }
+    .fix-note {
+      margin-top: 5px; max-width: 100%; background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
+      border-radius: 12px; padding: 7px 10px; font-size: 12.5px; line-height: 1.45;
     }
-    .caller-avatar.listening::after {
-      content: ""; position: absolute; inset: -5px; border-radius: 50%;
-      border: 2px solid #10B981; animation: ringPulse 1.6s infinite;
+    .fix-note b { font-weight: 800; }
+    .sys-chip {
+      align-self: center; max-width: 92%; background: var(--surface); border: 1px solid var(--border); color: var(--sub);
+      border-radius: 14px; padding: 8px 12px; font-size: 12.5px; line-height: 1.5; text-align: center;
     }
-    @keyframes ringPulse { 0% { transform: scale(1); opacity: 0.95; } 100% { transform: scale(1.25); opacity: 0; } }
+    .typing { display: inline-flex; gap: 4px; padding: 4px 2px; }
+    .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--sub); opacity: .4; animation: blink 1.2s infinite; }
+    .typing i:nth-child(2) { animation-delay: .2s; } .typing i:nth-child(3) { animation-delay: .4s; }
+    @keyframes blink { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: .9; transform: translateY(-3px); } }
 
-    .caller-name { font-size: 15.5px; font-weight: 800; color: #FFFFFF; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .caller-role { font-size: 11.5px; color: #9CA3AF; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cc-btn {
-      background: rgba(255,255,255,0.14); border: none; color: #FFFFFF; font-size: 11px; font-weight: 800;
-      padding: 6px 9px; border-radius: 8px; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+    /* 입력창 */
+    .type-row { flex: 0 0 auto; display: none; gap: 6px; padding: 8px 12px; background: var(--surface); border-top: 1px solid var(--border); }
+    .type-row.show { display: flex; }
+    .type-row input {
+      flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 999px; padding: 10px 14px; font-size: 15px;
+      background: var(--surface2); color: var(--text); outline: none;
     }
+    .type-row button { border: none; background: var(--accent); color: #fff; border-radius: 999px; padding: 0 16px; font-weight: 800; cursor: pointer; }
 
-    .call-badge-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .live-pill {
-      background: var(--accent); color: #FFFFFF; font-size: 11.5px; font-weight: 800;
-      padding: 5px 10px; border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+    /* 통화 컨트롤 */
+    .dock {
+      flex: 0 0 auto; background: var(--surface); border-top: 1px solid var(--border);
+      padding: 8px 14px calc(10px + var(--tabbar-h) + var(--safe-b));
     }
-    .replay-voice-btn {
-      background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.18); color: #FFFFFF;
-      font-size: 11.5px; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer;
-      white-space: nowrap; flex-shrink: 0;
+    .status-line { text-align: center; font-size: 12.5px; font-weight: 700; color: var(--sub); min-height: 18px; margin-bottom: 22px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .dock-row { display: grid; grid-template-columns: 1fr 1fr auto 1fr 1fr; align-items: center; gap: 4px; }
+    .side-btn {
+      border: none; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px;
+      font-size: 10.5px; font-weight: 700; color: var(--sub); padding: 4px 0;
     }
+    .side-btn .ic {
+      width: 44px; height: 44px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center; font-size: 19px;
+    }
+    .side-btn.on .ic { background: var(--accent-soft); border-color: var(--accent-border); }
+    .side-btn.end .ic { background: var(--red); border-color: var(--red); color: #fff; }
+    .side-btn.hidden { visibility: hidden; }
+    .big-wrap { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 0 6px; }
+    .big-btn {
+      width: 76px; height: 76px; border-radius: 50%; border: none; cursor: pointer; position: relative;
+      display: flex; align-items: center; justify-content: center; font-size: 30px; color: #fff;
+      background: var(--green); box-shadow: 0 8px 22px rgba(16,185,129,.38); transition: transform .12s, background .2s;
+      touch-action: manipulation;
+    }
+    .big-btn:active { transform: scale(.94); }
+    .big-btn.coach { background: var(--accent); box-shadow: 0 8px 22px rgba(var(--accent-rgb), .38); }
+    .big-btn.listen { background: var(--green); }
+    .big-btn.listen::before, .big-btn.listen::after {
+      content: ""; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid rgba(16,185,129,.5); animation: ring 1.5s infinite;
+    }
+    .big-btn.listen::after { animation-delay: .75s; }
+    .big-btn.think { background: #9CA3AF; box-shadow: none; }
+    .big-btn.type { background: var(--accent); }
+    .big-label { font-size: 11px; font-weight: 800; color: var(--text); white-space: nowrap; }
+    .waves { display: none; gap: 3px; align-items: center; height: 26px; }
+    .big-btn.listen .waves { display: flex; }
+    .big-btn.listen .big-ic { display: none; }
+    .waves i { width: 4px; border-radius: 3px; background: #fff; height: 8px; animation: wave 1s infinite ease-in-out; }
+    .waves i:nth-child(2) { animation-delay: .15s; } .waves i:nth-child(3) { animation-delay: .3s; }
+    .waves i:nth-child(4) { animation-delay: .45s; } .waves i:nth-child(5) { animation-delay: .6s; }
+    .waves.loud i { animation-duration: .45s; }
+    @keyframes wave { 0%, 100% { height: 6px; } 50% { height: 24px; } }
+    .spin { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255,255,255,.4); border-top-color: #fff; animation: sp .8s linear infinite; display: none; }
+    .big-btn.think .spin { display: block; }
+    .big-btn.think .big-ic { display: none; }
+    @keyframes sp { to { transform: rotate(360deg); } }
 
-    .coach-speech-box { background: var(--card2); border-radius: 15px; padding: 14px; }
-    .coach-target { font-size: 18px; font-weight: 800; line-height: 1.45; color: #FFFFFF; margin-bottom: 6px; }
-    .coach-reading { font-size: 12px; color: var(--accent-light); margin-bottom: 6px; line-height: 1.4; }
-    .coach-ko { font-size: 13px; color: #D1D5DB; line-height: 1.45; }
-    .coach-kor { font-size: 13px; color: #A7F3D0; margin-bottom: 6px; line-height: 1.45; }
-    .coach-kor::before { content: "🔈 "; }
-    .coach-kor:empty { display: none; }
-    .msg-bubble.coach .kor { font-size: 12px; color: var(--accent); margin-top: 3px; }
-    .hide-sub .coach-reading, .hide-sub .coach-ko, .hide-sub .coach-kor { display: none; }
+    /* ---------- 하단 탭 ---------- */
+    .tabbar {
+      position: absolute; left: 0; right: 0; bottom: 0; z-index: 40; height: calc(var(--tabbar-h) + var(--safe-b));
+      padding-bottom: var(--safe-b); background: var(--surface); border-top: 1px solid var(--border);
+      display: grid; grid-template-columns: repeat(4, 1fr);
+    }
+    .tab {
+      border: none; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 3px; font-size: 10.5px; font-weight: 800; color: var(--sub); position: relative;
+    }
+    .tab .ti { font-size: 21px; line-height: 1; filter: grayscale(1); opacity: .55; }
+    .tab.active { color: var(--accent); }
+    .tab.active .ti { filter: none; opacity: 1; }
+    .tab .badge {
+      position: absolute; top: 7px; left: calc(50% + 6px); min-width: 17px; height: 17px; border-radius: 999px; padding: 0 5px;
+      background: var(--red); color: #fff; font-size: 10px; font-weight: 800; display: none; align-items: center; justify-content: center;
+    }
+    .tab .badge.show { display: flex; }
 
-    .live-box {
-      display: none; background: rgba(16,185,129,0.14); border: 1px dashed rgba(16,185,129,0.6);
-      color: #D1FAE5; border-radius: 12px; padding: 9px 11px; font-size: 13px; line-height: 1.45;
-    }
-    .live-box.show { display: block; }
-    .live-box .lbl { font-size: 11px; font-weight: 800; color: #6EE7B7; margin-bottom: 3px; }
-
-    .phone-card-controls { display: grid; grid-template-columns: 1.2fr 1fr; gap: 8px; margin-top: 2px; }
-    .primary-call-btn {
-      background: #10B981; color: #FFFFFF; border: none; border-radius: 999px; padding: 12px 10px;
-      font-size: 14px; font-weight: 800; cursor: pointer; display: flex; align-items: center; justify-content: center;
-      gap: 6px; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35); white-space: nowrap; touch-action: manipulation;
-    }
-    .primary-call-btn.in-call { background: #EF4444; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.35); }
-    .mic-push-btn {
-      background: rgba(255, 255, 255, 0.14); color: #FFFFFF; border: 1px solid rgba(255, 255, 255, 0.25);
-      border-radius: 999px; padding: 12px 8px; font-size: 13px; font-weight: 800; cursor: pointer;
-      display: flex; align-items: center; justify-content: center; gap: 4px; white-space: nowrap; touch-action: manipulation;
-    }
-    .mic-push-btn.listening { background: #10B981; border-color: #10B981; animation: micGlow 1.4s infinite; }
-    .mic-push-btn.busy { opacity: .6; }
-    @keyframes micGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,.5); } 50% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } }
-
-    .call-action-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-    .pill-action {
-      padding: 10px 4px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
-      color: var(--text); font-size: 11.5px; font-weight: 800; letter-spacing: -0.4px; white-space: nowrap;
-      overflow: hidden; text-overflow: ellipsis; cursor: pointer; text-align: center;
-      display: flex; align-items: center; justify-content: center;
-    }
-    .pill-action.highlight, .pill-action.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-dark); }
-    [data-mode="dark"] .pill-action.highlight, [data-mode="dark"] .pill-action.on { color: var(--accent-light); }
-
-    .transcript-section {
-      background: var(--surface2); border: 1px solid var(--border); border-radius: 18px; padding: 12px;
-      display: flex; flex-direction: column; gap: 9px;
-    }
-    .transcript-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 800; color: var(--accent); gap: 8px; }
-    .transcript-header #micStatusLabel { color: var(--sub); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .chat-list { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-    .msg-bubble { padding: 9px 12px; border-radius: 14px; font-size: 13px; line-height: 1.45; max-width: 88%; }
-    .msg-bubble.coach { background: var(--surface); border: 1px solid var(--border); align-self: flex-start; border-bottom-left-radius: 4px; }
-    .msg-bubble.coach .ko { font-size: 12px; color: var(--sub); margin-top: 3px; }
-    .msg-bubble.user { background: var(--accent); color: #FFFFFF; align-self: flex-end; border-bottom-right-radius: 4px; font-weight: 600; }
-
-    .corr-alert {
-      background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 12px;
-      padding: 8px 11px; font-size: 12px; color: var(--warn-text); line-height: 1.45;
-    }
-    .manual-input-row { display: flex; gap: 6px; }
-    .manual-input-row input {
-      flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 999px; padding: 9px 13px;
-      font-size: 14px; background: var(--surface); color: var(--text); outline: none;
-    }
-    .manual-send-btn {
-      background: var(--accent); color: #FFFFFF; border: none; border-radius: 999px; padding: 0 14px;
-      font-size: 12.5px; font-weight: 700; cursor: pointer; flex-shrink: 0;
-    }
-
-    .bottom-phone-bar {
-      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 460px;
-      background: var(--surface); border-top: 1px solid var(--border);
-      padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-      display: flex; align-items: center; justify-content: space-between; gap: 10px; z-index: 40;
-    }
-    .phone-status-wrap { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
-    .phone-status-main { font-size: 13px; font-weight: 800; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .phone-status-sub { font-size: 11px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .call-cta-btn {
-      flex: 0 0 auto; background: var(--accent); color: #FFFFFF; border: none; border-radius: 999px;
-      padding: 12px 18px; font-size: 14px; font-weight: 800; cursor: pointer;
-      box-shadow: 0 6px 16px rgba(var(--accent-rgb), 0.32); white-space: nowrap; touch-action: manipulation;
-    }
-    .call-cta-btn.in-call { background: #DC2626; box-shadow: 0 6px 16px rgba(220, 38, 38, 0.3); }
-
-    .modal-bg {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: none;
-      align-items: flex-end; justify-content: center; z-index: 60;
-    }
-    .modal-bg.show { display: flex; }
-    .modal-box {
-      width: 100%; max-width: 460px; background: var(--surface); color: var(--text);
-      border-top-left-radius: 24px; border-top-right-radius: 24px;
-      padding: 20px 18px calc(28px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto;
-      display: flex; flex-direction: column; gap: 12px;
-    }
-    .modal-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .panel { background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 12px; font-size: 13px; }
-    .panel-title { font-weight: 800; color: var(--accent); margin-bottom: 8px; }
+    /* ---------- 카드/패널 공통 ---------- */
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; font-size: 13px; }
+    .panel-title { font-weight: 800; color: var(--accent); margin-bottom: 10px; font-size: 13.5px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
     .panel.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); font-size: 12.5px; }
     .panel.soft { background: var(--accent-soft); border-color: var(--accent-border); }
+    .top-btn { background: var(--surface2); border: 1px solid var(--border); color: var(--text); font-size: 11.5px; font-weight: 700;
+      padding: 6px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
 
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 10px; text-align: center; }
+    .stat .v { font-size: 22px; font-weight: 900; letter-spacing: -.5px; color: var(--text); }
+    .stat .v small { font-size: 12px; font-weight: 700; color: var(--sub); margin-left: 1px; }
+    .stat .l { font-size: 11px; color: var(--sub); font-weight: 700; margin-top: 2px; }
+    .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 92px; }
+    .wcol { display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; justify-content: flex-end; }
+    .wbar { width: 100%; max-width: 26px; border-radius: 7px 7px 3px 3px; background: var(--accent-border); min-height: 4px; }
+    .wcol.today .wbar { background: var(--accent); }
+    .wlbl { font-size: 10.5px; color: var(--sub); font-weight: 700; }
+    .wcol.today .wlbl { color: var(--accent); }
+
+    .rcard {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; cursor: pointer;
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    .rcard .q { font-size: 11px; font-weight: 800; color: var(--sub); }
+    .rcard .orig { font-size: 15px; color: var(--sub); text-decoration: line-through; text-decoration-color: rgba(239,68,68,.6); }
+    .rcard .ans { display: none; flex-direction: column; gap: 6px; }
+    .rcard.open .ans { display: flex; }
+    .rcard.open .tap { display: none; }
+    .rcard .fixed { font-size: 17px; font-weight: 800; color: var(--text); }
+    .rcard .why { font-size: 12.5px; color: var(--sub); line-height: 1.45; }
+    .rcard .tap { font-size: 12px; color: var(--accent); font-weight: 700; }
+    .rcard .acts { display: flex; gap: 6px; margin-top: 2px; }
+    .rcard .acts button { flex: 1; border: 1px solid var(--border); background: var(--surface2); border-radius: 10px; padding: 9px; font-size: 12.5px; font-weight: 800; cursor: pointer; }
+    .rcard .acts button.ok { background: var(--green); border-color: var(--green); color: #fff; }
+    .empty { text-align: center; color: var(--sub); font-size: 13px; line-height: 1.6; padding: 18px 10px; }
+
+    .vitem { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+    .vword { font-size: 16px; font-weight: 800; }
+    .vread { font-size: 12px; color: var(--accent); margin-left: 4px; font-weight: 600; }
+    .vkor { font-size: 12.5px; color: var(--green); font-weight: 700; margin-top: 3px; }
+    .vmean { font-size: 12.5px; color: var(--sub); margin-top: 2px; }
+    .vplay { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--border); background: var(--accent-soft); font-size: 17px; cursor: pointer; flex-shrink: 0; }
+
+    /* 설정 */
     .swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-    .swatch {
-      aspect-ratio: 1; border-radius: 50%; border: 3px solid transparent; cursor: pointer;
-      box-shadow: inset 0 0 0 2px rgba(255,255,255,.35);
-    }
+    .swatch { aspect-ratio: 1; border-radius: 50%; border: 3px solid transparent; cursor: pointer; box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); }
     .swatch.active { border-color: var(--text); }
-    .swatch.custom {
-      position: relative; overflow: hidden;
-      background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
-    }
+    .swatch.custom { position: relative; overflow: hidden; background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red); }
     .swatch.custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
-
-    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; }
     .row + .row { border-top: 1px solid var(--border); }
     .row .lbl { font-weight: 700; }
     .row .desc { font-size: 11.5px; color: var(--sub); margin-top: 2px; }
     .switch { position: relative; width: 46px; height: 26px; flex-shrink: 0; }
     .switch input { opacity: 0; width: 0; height: 0; }
-    .switch span {
-      position: absolute; inset: 0; background: var(--border); border-radius: 999px; transition: .2s; cursor: pointer;
-    }
-    .switch span::before {
-      content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px;
-      background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.3);
-    }
+    .switch span { position: absolute; inset: 0; background: var(--border); border-radius: 999px; transition: .2s; cursor: pointer; }
+    .switch span::before { content: ""; position: absolute; width: 20px; height: 20px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
     .switch input:checked + span { background: var(--accent); }
     .switch input:checked + span::before { transform: translateX(20px); }
     input[type=range] { width: 100%; accent-color: var(--accent); }
-    .text-input {
-      width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px;
-      font-size: 13px; background: var(--surface); color: var(--text); outline: none;
-    }
+    .text-input { width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; background: var(--surface2); color: var(--text); outline: none; }
     .btn-row { display: flex; gap: 6px; margin-top: 8px; }
-    .btn {
-      flex: 1; border: none; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 800; cursor: pointer;
-      background: var(--accent); color: #fff;
-    }
-    .btn.ghost { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn { flex: 1; border: none; border-radius: 10px; padding: 11px; font-size: 13px; font-weight: 800; cursor: pointer; background: var(--accent); color: #fff; }
+    .btn.ghost { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
     .btn.sel { background: var(--accent); color: #fff; border-color: var(--accent); }
     .diag { font-size: 12px; line-height: 1.6; color: var(--sub); }
     .diag b { color: var(--text); }
-    textarea { background: var(--surface); color: var(--text); }
+    textarea { background: var(--surface2); color: var(--text); }
 
     .toast {
-      white-space: pre-line;
-      position: fixed; left: 50%; bottom: calc(92px + env(safe-area-inset-bottom)); transform: translateX(-50%) translateY(20px);
-      width: calc(100% - 32px); max-width: 428px; background: rgba(17,19,23,.94); color: #fff;
-      font-size: 13px; line-height: 1.45; padding: 11px 14px; border-radius: 14px; z-index: 80;
+      position: fixed; left: 50%; bottom: calc(var(--tabbar-h) + var(--safe-b) + 128px); transform: translateX(-50%) translateY(16px);
+      width: calc(100% - 32px); max-width: 448px; background: rgba(17,19,23,.94); color: #fff; white-space: pre-line;
+      font-size: 13px; line-height: 1.5; padding: 11px 14px; border-radius: 14px; z-index: 80;
       opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -295,139 +295,104 @@
 </head>
 <body>
   <div class="app">
-    <header class="header">
+    <header class="topbar">
       <div class="brand">Study<span>365</span></div>
-      <div class="top-btns">
-        <button type="button" class="top-btn" onclick="window.__openVocab()">📖 단어장</button>
-        <button type="button" class="top-btn" onclick="window.__openClass()">🏫 강의실</button>
-        <button type="button" class="top-btn" onclick="window.__openSettings()">⚙️ 설정</button>
+      <div class="lang-seg">
+        <button type="button" class="lang-btn active" id="tab-zh" onclick="window.__setLang('zh')">🇨🇳 중국어</button>
+        <button type="button" class="lang-btn" id="tab-en" onclick="window.__setLang('en')">🇺🇸 영어</button>
+        <button type="button" class="lang-btn" id="tab-ja" onclick="window.__setLang('ja')">🇯🇵 일본어</button>
       </div>
     </header>
 
-    <nav class="lang-bar">
-      <button type="button" class="lang-btn active" id="tab-zh" onclick="window.__setLang('zh')">🇨🇳 중국어</button>
-      <button type="button" class="lang-btn" id="tab-en" onclick="window.__setLang('en')">🇺🇸 영어</button>
-      <button type="button" class="lang-btn" id="tab-ja" onclick="window.__setLang('ja')">🇯🇵 일본어</button>
-    </nav>
-
-    <main class="main">
-      <div class="stage-row">
-        <select class="stage-select" id="stageSelect"></select>
-        <span class="call-timer" id="callTimer">⏱ 00:00 / 20:00</span>
-      </div>
-
-      <section class="phone-card" id="phoneCard">
-        <div class="caller-top">
-          <div class="caller-profile">
-            <div class="caller-avatar" id="callerAvatar">林</div>
-            <div style="min-width:0;">
+    <div class="views">
+      <!-- 📞 통화 -->
+      <section class="view active" id="view-call">
+        <div class="caller">
+          <div class="caller-row">
+            <div class="avatar" id="callerAvatar">林</div>
+            <div class="caller-info">
               <div class="caller-name" id="callerName"></div>
               <div class="caller-role" id="callerRole"></div>
             </div>
+            <div class="caller-side">
+              <span class="timer" id="callTimer">00:00 / 20:00</span>
+              <button type="button" class="chip-btn on" id="btnCcToggle" onclick="window.__toggleSub()">자막 ON</button>
+            </div>
           </div>
-          <button type="button" class="cc-btn" id="btnCcToggle" onclick="window.__toggleSub()">자막 ON</button>
+          <select class="stage-select" id="stageSelect"></select>
         </div>
 
-        <div class="call-badge-row">
-          <span class="live-pill" id="callStateBadge">대기 중 · 통화하기를 누르세요</span>
-          <button type="button" class="replay-voice-btn" onclick="window.__replay()">🔊 다시 듣기</button>
+        <div class="chat scroll" id="chatList"></div>
+
+        <div class="type-row" id="typeRow">
+          <input type="text" id="manualInput" placeholder="대답을 입력하세요" enterkeyhint="send" />
+          <button type="button" onclick="window.__send()">전송</button>
         </div>
 
-        <div class="coach-speech-box">
-          <div class="coach-target" id="coachTargetText"></div>
-          <div class="coach-reading" id="coachReadingText"></div>
-          <div class="coach-kor" id="coachKorText"></div>
-          <div class="coach-ko" id="coachKoText"></div>
+        <div class="dock">
+          <div class="status-line" id="statusLine">통화 버튼을 누르면 코치가 먼저 말해요</div>
+          <div class="dock-row">
+            <button type="button" class="side-btn" id="btnSlowDown" onclick="window.__slow()"><span class="ic">🐢</span>천천히</button>
+            <button type="button" class="side-btn" onclick="window.__hint()"><span class="ic">💡</span>힌트</button>
+            <div class="big-wrap">
+              <button type="button" class="big-btn" id="bigBtn" onclick="window.__mic()" aria-label="통화">
+                <span class="big-ic" id="bigIc">📞</span>
+                <span class="waves" id="waves"><i></i><i></i><i></i><i></i><i></i></span>
+                <span class="spin"></span>
+              </button>
+              <span class="big-label" id="bigLabel">통화 시작</span>
+            </div>
+            <button type="button" class="side-btn" id="btnType" onclick="window.__toggleType()"><span class="ic">⌨️</span>입력</button>
+            <button type="button" class="side-btn end hidden" id="btnEnd" onclick="window.__hangup()"><span class="ic">📵</span>종료</button>
+          </div>
         </div>
+      </section>
 
-        <div class="live-box" id="liveBox">
-          <div class="lbl">🎙️ 내가 말하는 중</div>
-          <div id="liveText"></div>
-        </div>
-
-        <div class="phone-card-controls">
-          <button type="button" class="primary-call-btn" id="btnCardCall" onclick="window.__call()">📞 통화하기</button>
-          <button type="button" class="mic-push-btn" id="btnCardMic" onclick="window.__mic()">🎤 말하기</button>
+      <!-- 📈 기록·복습 -->
+      <section class="view scroll" id="view-review">
+        <div class="page">
+          <div class="page-title">기록 · 복습</div>
+          <div class="page-sub" id="reviewSub"></div>
+          <div class="stats">
+            <div class="stat"><div class="v" id="stToday">0<small>분</small></div><div class="l">오늘 학습</div></div>
+            <div class="stat"><div class="v" id="stStreak">0<small>일</small></div><div class="l">연속 학습</div></div>
+            <div class="stat"><div class="v" id="stTurns">0<small>회</small></div><div class="l">오늘 발화</div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><span>📅 최근 7일 학습 시간</span><span id="weekTotal" style="color:var(--sub); font-weight:700; font-size:12px;"></span></div>
+            <div class="week" id="weekBars"></div>
+          </div>
+          <div class="panel" style="background:transparent; border:none; padding:0;">
+            <div class="panel-title" style="padding:0 2px;"><span>✏️ 교정 표현 복습 <span id="reviewCount" style="color:var(--sub); font-weight:700;"></span></span>
+              <button type="button" class="top-btn" onclick="window.__clearCorr()">비우기</button></div>
+            <div id="reviewList" style="display:flex; flex-direction:column; gap:8px;"></div>
+          </div>
+          <div class="panel soft">
+            <div class="panel-title">🎉 이번 수업 리포트</div>
+            <div id="lessonStatsText" style="line-height:1.6;"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title">🗂️ 학습 카드</div>
+            <textarea id="studyCardText" style="width:100%; min-height:120px; border:1px solid var(--border); border-radius:10px; padding:9px; font-size:12.5px;"></textarea>
+            <button type="button" class="btn" style="width:100%; margin-top:8px;" onclick="window.__copyCard()">학습 카드 복사하기</button>
+          </div>
         </div>
       </section>
 
-      <div class="call-action-row">
-        <button type="button" class="pill-action" id="btnSlowDown" onclick="window.__slow()">🐢 천천히 말하기</button>
-        <button type="button" class="pill-action" onclick="window.__hint()">💡 표현 힌트</button>
-        <button type="button" class="pill-action highlight" onclick="window.__end()">🏁 수업 종료</button>
-      </div>
-
-      <section class="transcript-section">
-        <div class="transcript-header">
-          <span>실시간 통화 자막 기록</span>
-          <span id="micStatusLabel">대기 중</span>
-        </div>
-        <div class="chat-list" id="chatList"></div>
-        <div class="corr-alert" id="corrAlertBox" style="display:none;"></div>
-        <div class="manual-input-row">
-          <input type="text" id="manualInput" placeholder="음성 인식이 안 될 땐 여기에 입력 후 전송" enterkeyhint="send" />
-          <button type="button" class="manual-send-btn" onclick="window.__send()">전송</button>
+      <!-- 📖 단어장 -->
+      <section class="view scroll" id="view-vocab">
+        <div class="page">
+          <div class="page-title" id="vocabTitle">단어장</div>
+          <div class="page-sub">🔊를 눌러 발음을 듣고 소리 내어 3번 따라 읽어보세요</div>
+          <div id="vocabListContainer" style="display:flex; flex-direction:column; gap:8px;"></div>
         </div>
       </section>
-    </main>
 
-    <div class="bottom-phone-bar">
-      <div class="phone-status-wrap">
-        <span class="phone-status-main" id="bottomMainText">1:1 AI 전화외국어 대기 중</span>
-        <span class="phone-status-sub" id="bottomSubText">통화하기를 누르면 코치가 먼저 말합니다</span>
-      </div>
-      <button type="button" class="call-cta-btn" id="btnPhoneToggle" onclick="window.__call()">📞 통화하기</button>
-    </div>
-  </div>
+      <!-- ⚙️ 설정 -->
+      <section class="view scroll" id="view-settings">
+        <div class="page">
+          <div class="page-title">설정</div>
 
-  <!-- 단어장 -->
-  <div class="modal-bg" id="vocabModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <strong style="font-size:17px;" id="vocabModalTitle">📖 핵심 단어장</strong>
-        <button type="button" class="top-btn" onclick="window.__closeModal('vocabModal')">닫기 ✕</button>
-      </div>
-      <div class="panel">
-        <div class="panel-title">📌 이번 수업 핵심 단어</div>
-        <div id="vocabListContainer" style="display:flex; flex-direction:column; gap:6px;"></div>
-      </div>
-      <div class="panel warn">💡 <b>단어 학습 팁:</b> 🔊 발음을 듣고 소리 내어 3번 따라 읽어보세요!</div>
-    </div>
-  </div>
-
-  <!-- 강의실 -->
-  <div class="modal-bg" id="classroomModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <strong style="font-size:17px;">🏫 나의 강의실</strong>
-        <button type="button" class="top-btn" onclick="window.__closeModal('classroomModal')">닫기 ✕</button>
-      </div>
-      <div class="panel soft">
-        <div class="panel-title">🎉 1:1 전화외국어 수업 리포트</div>
-        <div id="lessonStatsText" style="line-height:1.55;"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title" style="display:flex; justify-content:space-between; align-items:center;">
-          <span>✨ 교정·원어민 표현 노트</span>
-          <button type="button" class="top-btn" onclick="window.__clearCorr()">비우기</button>
-        </div>
-        <div id="modalCorrList" style="color:var(--sub); line-height:1.5;"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-title">🗂️ 일일 학습 카드</div>
-        <textarea id="studyCardText" style="width:100%; min-height:110px; border:1px solid var(--border); border-radius:10px; padding:8px; font-size:12.5px;"></textarea>
-        <button type="button" class="btn" style="width:100%; margin-top:8px;" onclick="window.__copyCard()">학습 카드 복사하기</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 설정 -->
-  <div class="modal-bg" id="settingsModal">
-    <div class="modal-box">
-      <div class="modal-head">
-        <strong style="font-size:17px;">⚙️ 설정</strong>
-        <button type="button" class="top-btn" onclick="window.__closeModal('settingsModal')">닫기 ✕</button>
-      </div>
 
       <div class="panel">
         <div class="panel-title">🎨 테마 색상</div>
@@ -447,7 +412,7 @@
           </div>
         </div>
         <div class="row">
-          <div><div class="lbl">자동 전송</div><div class="desc">말을 멈추면 [말하기 완료]를 안 눌러도 자동으로 보냄</div></div>
+          <div><div class="lbl">자동 전송</div><div class="desc">말을 멈추면 가운데 버튼을 안 눌러도 자동으로 보냄</div></div>
           <label class="switch"><input type="checkbox" id="autoToggle" onchange="window.__setAuto(this.checked)"><span></span></label>
         </div>
         <div class="diag" id="diagBox" style="margin-top:8px;"></div>
@@ -473,11 +438,19 @@
         </div>
         <div class="diag" id="apiTestResult" style="margin-top:8px; word-break:break-all;"></div>
       </div>
+        </div>
+      </section>
     </div>
+
+    <nav class="tabbar">
+      <button type="button" class="tab active" id="tabbtn-call" onclick="window.__tab('call')"><span class="ti">📞</span>통화</button>
+      <button type="button" class="tab" id="tabbtn-review" onclick="window.__tab('review')"><span class="ti">📈</span>기록·복습<span class="badge" id="reviewBadge"></span></button>
+      <button type="button" class="tab" id="tabbtn-vocab" onclick="window.__tab('vocab')"><span class="ti">📖</span>단어장</button>
+      <button type="button" class="tab" id="tabbtn-settings" onclick="window.__tab('settings')"><span class="ti">⚙️</span>설정</button>
+    </nav>
   </div>
 
   <div class="toast" id="toast"></div>
-
   <script>
   (function () {
     "use strict";
@@ -721,95 +694,113 @@
     window.__setDark = function (on) { darkMode = !!on; setStore("s365_mode", darkMode ? "dark" : "light"); applyTheme(); };
 
     /* ---------------- UI 상태 ---------------- */
+    var speakingIdx = -1;
     function setPhase(p) {
       phase = p;
-      var badge = $("callStateBadge"), main = $("bottomMainText"), sub = $("bottomSubText");
-      var mic = $("btnCardMic"), avatar = $("callerAvatar"), micLbl = $("micStatusLabel");
-      avatar.classList.remove("ringing", "listening");
-      mic.classList.remove("listening", "busy");
-
       if (!isCalling && p !== "think") p = phase = "idle";
-
+      var big = $("bigBtn"), ic = $("bigIc"), lbl = $("bigLabel"), st = $("statusLine"), av = $("callerAvatar");
+      big.className = "big-btn";
+      av.classList.remove("ringing", "listening");
       if (p === "idle") {
-        badge.textContent = "대기 중 · 통화하기를 누르세요";
-        main.textContent = "1:1 AI 전화외국어 대기 중";
-        sub.textContent = hasApiKey() ? "AI 자유대화 모드 · 통화하기를 누르세요" : "오프라인 연습 모드 · ⚙️설정에서 API 키 등록 시 AI 자유대화";
-        mic.textContent = "🎤 말하기";
-        micLbl.textContent = "대기 중";
+        ic.textContent = "📞"; lbl.textContent = "통화 시작";
+        st.textContent = hasApiKey() ? "통화 버튼을 누르면 코치가 먼저 말해요" : "📚 오프라인 연습 모드 · ⚙️설정에서 API 키 등록 시 AI 대화";
       } else if (p === "coach") {
-        avatar.classList.add("ringing");
-        badge.textContent = "🔊 코치가 말하는 중...";
-        main.textContent = "코치가 말하고 있습니다";
-        sub.textContent = lastLatency ? "⚡ 응답 " + lastLatency : "끝나면 자동으로 마이크가 켜져요";
+        big.classList.add("coach"); ic.textContent = "⏭"; lbl.textContent = "끊고 말하기";
+        av.classList.add("ringing");
+        st.textContent = lastLatency ? "🔊 코치가 말하는 중 · ⚡ " + lastLatency : "🔊 코치가 말하는 중 · 말풍선을 누르면 다시 들어요";
         lastLatency = "";
-        mic.textContent = "⏭ 끊고 말하기";
-        micLbl.textContent = "코치 발화 중";
       } else if (p === "listen") {
-        avatar.classList.add("listening");
-        mic.classList.add("listening");
-        badge.textContent = "🎙️ 듣고 있어요 · 말씀하세요";
-        main.textContent = "듣고 있습니다";
-        sub.textContent = autoSend ? "말을 멈추면 자동으로 전송돼요" : "다 말한 뒤 [✅ 말하기 완료]를 누르세요";
-        mic.textContent = "✅ 말하기 완료";
-        micLbl.textContent = "🎙️ 듣는 중...";
+        big.classList.add("listen"); lbl.textContent = autoSend ? "듣는 중…" : "다 말했으면 탭";
+        av.classList.add("listening");
+        st.textContent = autoSend ? "🎙️ 말씀하세요 · 멈추면 자동 전송돼요" : "🎙️ 말씀하세요 · 끝나면 가운데 버튼을 누르세요";
       } else if (p === "think") {
-        mic.classList.add("busy");
-        badge.textContent = "💭 코치가 답변을 생각 중...";
-        main.textContent = "답변 준비 중";
-        sub.textContent = "잠시만 기다려 주세요";
-        mic.textContent = "💭 생각 중...";
-        micLbl.textContent = "처리 중";
+        big.classList.add("think"); lbl.textContent = "생각 중…";
+        st.textContent = "💭 코치가 답변을 생각하고 있어요";
       } else if (p === "type") {
-        badge.textContent = "⌨️ 아래 입력창에 대답해 주세요";
-        main.textContent = "음성인식을 사용할 수 없습니다";
-        sub.textContent = "아래 입력창에 입력 후 전송하세요";
-        mic.textContent = "🎤 다시 시도";
-        micLbl.textContent = "음성인식 불가";
+        big.classList.add("type"); ic.textContent = "🎤"; lbl.textContent = "다시 시도";
+        st.textContent = "⌨️ 음성인식을 쓸 수 없어요 · 입력창에 대답해 주세요";
+        showType(true);
       }
+      if (p !== "coach") clearSpeaking();
       syncCallButtons();
       if (p !== "listen") showLive("");
+      renderTyping();
     }
 
     function syncCallButtons() {
-      var b1 = $("btnPhoneToggle"), b2 = $("btnCardCall");
-      if (isCalling) {
-        b1.textContent = "🔴 통화 종료"; b1.classList.add("in-call");
-        b2.textContent = "🔴 통화 종료"; b2.classList.add("in-call");
-      } else {
-        b1.textContent = "📞 통화하기"; b1.classList.remove("in-call");
-        b2.textContent = "📞 통화하기"; b2.classList.remove("in-call");
-      }
+      $("btnEnd").classList.toggle("hidden", !isCalling);
+      var t = $("callTimer");
+      t.classList.toggle("live", isCalling);
     }
 
     function showLive(text) {
-      var box = $("liveBox");
+      var el = $("liveBubble");
       if (text) {
-        $("liveText").textContent = text;
-        box.classList.add("show");
-        $("bottomSubText").textContent = "인식 중: \"" + text + "\"";
-      } else {
-        box.classList.remove("show");
-        $("liveText").textContent = "";
+        if (!el) {
+          el = document.createElement("div");
+          el.id = "liveBubble";
+          el.className = "msg user ghost";
+          el.innerHTML = '<div class="bubble"></div>';
+          $("chatList").appendChild(el);
+        }
+        el.firstChild.textContent = text;
+        $("waves").classList.add("loud");
+        clearTimeout(showLive._t);
+        showLive._t = setTimeout(function () { $("waves").classList.remove("loud"); }, 600);
+        scrollChat();
+      } else if (el) {
+        el.parentNode.removeChild(el);
       }
     }
 
-    function updateCoachCard(m) {
-      $("coachTargetText").textContent = m.target || "";
-      $("coachReadingText").textContent = m.reading || "";
-      $("coachKoText").textContent = m.ko || "";
-      $("coachKorText").textContent = m.kor || "";
+    function renderTyping() {
+      var el = $("typingBubble");
+      if (phase === "think") {
+        if (!el) {
+          el = document.createElement("div");
+          el.id = "typingBubble";
+          el.className = "msg coach";
+          el.innerHTML = '<div class="msg-row"><div class="mini-av">' + esc(LANGS[currentLang].avatar) + '</div><div class="bubble" style="cursor:default"><span class="typing"><i></i><i></i><i></i></span></div></div>';
+          $("chatList").appendChild(el);
+          scrollChat();
+        }
+      } else if (el) {
+        el.parentNode.removeChild(el);
+      }
     }
+
+    function scrollChat() {
+      var c = $("chatList");
+      requestAnimationFrame(function () { c.scrollTop = c.scrollHeight; });
+    }
+
+    function updateCoachCard(m) { /* 최신 코치 말은 대화창 말풍선에 표시됨 */ }
 
     function renderChat() {
       var list = chats[currentLang], html = "";
+      var av = esc(LANGS[currentLang].avatar);
       for (var i = 0; i < list.length; i++) {
         var m = list[i];
-        if (m.sender === "user") html += '<div class="msg-bubble user">' + esc(m.target) + '</div>';
-        else html += '<div class="msg-bubble coach"><strong>' + esc(m.target) + '</strong>' + (m.kor ? '<div class="kor">🔈 ' + esc(m.kor) + '</div>' : '') + (m.ko ? '<div class="ko">' + esc(m.ko) + '</div>' : '') + '</div>';
+        if (m.sender === "user") {
+          html += '<div class="msg user"><div class="bubble">' + esc(m.target) + '</div>' +
+            (m.fix ? '<div class="fix-note">✏️ 더 자연스럽게: <b>' + esc(m.fix) + '</b>' + (m.reason ? '<br>' + esc(m.reason) : '') + '</div>' : '') + '</div>';
+        } else if (m.sender === "sys") {
+          html += '<div class="sys-chip">' + esc(m.target) + '</div>';
+        } else {
+          var sub = "";
+          if (m.reading && m.reading !== m.target) sub += '<div class="b-reading">' + esc(m.reading) + '</div>';
+          if (m.kor) sub += '<div class="b-kor">🔈 ' + esc(m.kor) + '</div>';
+          if (m.ko) sub += '<div class="b-ko">' + esc(m.ko) + '</div>';
+          html += '<div class="msg coach' + (i === speakingIdx ? ' speaking' : '') + '"><div class="msg-row"><div class="mini-av">' + av + '</div>' +
+            '<div class="bubble" onclick="window.__replayAt(' + i + ')"><div class="b-target">' + esc(m.target) + '</div>' +
+            (sub ? '<div class="b-sub">' + sub + '</div>' : '') + '</div></div></div>';
+        }
       }
       var el = $("chatList");
       el.innerHTML = html;
-      el.scrollTop = el.scrollHeight;
+      el.classList.toggle("hide-sub", !showSub);
+      renderTyping();
+      scrollChat();
     }
 
     function getLastCoachMsg() {
@@ -817,6 +808,11 @@
       for (var i = list.length - 1; i >= 0; i--) if (list[i].sender === "coach") return list[i];
       var q = LANGS[currentLang].questions[0];
       return { target: q.t, reading: q.r, kor: q.p, ko: q.k };
+    }
+    function lastCoachIndex() {
+      var list = chats[currentLang];
+      for (var i = list.length - 1; i >= 0; i--) if (list[i].sender === "coach") return i;
+      return -1;
     }
 
     /* ---------------- 교정 노트 ---------------- */
@@ -826,22 +822,23 @@
       if (String(orig).trim() === String(fix).trim()) return;
       var arr = getCorr();
       arr.unshift({ original: orig, fixed: fix, reason: reason || "" });
-      setStore("steady_corr_" + currentLang, JSON.stringify(arr.slice(0, 30)));
+      setStore("steady_corr_" + currentLang, JSON.stringify(arr.slice(0, 50)));
+      // 방금 내가 한 말 말풍선 아래에 교정 표시
+      var l = chats[currentLang];
+      for (var i = l.length - 1; i >= 0; i--) if (l[i].sender === "user") { l[i].fix = fix; l[i].reason = reason || ""; break; }
       refreshCorrBanner(true);
     }
-    function refreshCorrBanner(fresh) {
-      var arr = getCorr(), box = $("corrAlertBox");
-      if (fresh && arr.length) {
-        box.style.display = "block";
-        box.innerHTML = "<strong>✏️ 교정:</strong> " + esc(arr[0].original) + " → <b>" + esc(arr[0].fixed) + "</b>" + (arr[0].reason ? "<br><span style='opacity:.85'>" + esc(arr[0].reason) + "</span>" : "");
-      } else if (!fresh) {
-        box.style.display = "none";
-      }
+    function refreshCorrBanner() {
+      var n = getCorr().length, b = $("reviewBadge");
+      b.textContent = n > 99 ? "99+" : String(n);
+      b.classList.toggle("show", n > 0);
     }
     window.__clearCorr = function () {
+      if (!getCorr().length) return;
       setStore("steady_corr_" + currentLang, "[]");
-      refreshCorrBanner(false);
-      $("modalCorrList").textContent = "교정 노트를 비웠습니다.";
+      refreshCorrBanner();
+      renderReview();
+      toast("교정 노트를 비웠어요.", 1800);
     };
 
     /* ---------------- 오프라인 질문 (반복 방지) ---------------- */
@@ -1167,7 +1164,7 @@
     function coachSay(m) {
       var msg = { sender: "coach", target: m.target, reading: m.reading || "", kor: m.kor || "", ko: m.ko || "" };
       chats[currentLang].push(msg);
-      updateCoachCard(msg);
+      speakingIdx = isCalling ? chats[currentLang].length - 1 : -1;
       renderChat();
       if (isCalling) speakCoach(msg.target, function () { afterCoach(); });
       else setPhase("idle");
@@ -1182,9 +1179,10 @@
       timerId = setInterval(function () {
         if (!isCalling) return;
         callSeconds++;
+        bumpStat("sec", 1);
         var m = String(Math.floor(callSeconds / 60)).padStart(2, "0");
         var s = String(callSeconds % 60).padStart(2, "0");
-        $("callTimer").textContent = "⏱ " + m + ":" + s + " / 20:00";
+        $("callTimer").textContent = m + ":" + s + " / 20:00";
         if (callSeconds >= LESSON_LIMIT) { toast("⏰ 20분 수업이 끝났어요. 수고하셨습니다!"); window.__end(); }
       }, 1000);
     }
@@ -1203,8 +1201,7 @@
       isCalling = true;
       syncCallButtons();
       startTimer();
-      var last = getLastCoachMsg();
-      speakCoach(last.target, afterCoach);
+      window.__replayAt(lastCoachIndex());
     };
 
     window.__mic = function () {
@@ -1221,6 +1218,7 @@
       stopListening();
       cancelSpeech();
       chats[currentLang].push({ sender: "user", target: text });
+      bumpStat("turns", 1);
       renderChat();
       setPhase("think");
       var key = providerKey();
@@ -1297,6 +1295,7 @@
     function buildContents() {
       var list = chats[currentLang].slice(-10), contents = [];
       for (var i = 0; i < list.length; i++) {
+        if (list[i].sender === "sys") continue;
         var role = list[i].sender === "user" ? "user" : "model";
         var text = list[i].target;
         var last = contents[contents.length - 1];
@@ -1450,8 +1449,8 @@
       thinkTimer = setInterval(function () {
         if (phase !== "think") { clearInterval(thinkTimer); return; }
         var sec = Math.floor((Date.now() - t0) / 1000);
-        $("callStateBadge").textContent = "💭 코치가 답변을 생각 중... " + sec + "초";
-        if (sec >= 8) $("bottomSubText").textContent = "응답이 늦어지고 있어요 (최대 25초 대기)";
+        $("bigLabel").textContent = "생각 중… " + sec + "초";
+        if (sec >= 8) $("statusLine").textContent = "💭 응답이 늦어지고 있어요 (최대 25초 대기)";
       }, 1000);
     }
 
@@ -1579,10 +1578,18 @@
     }
 
     /* ---------------- 버튼들 ---------------- */
+    function clearSpeaking() {
+      if (speakingIdx < 0) return;
+      speakingIdx = -1;
+      var el = document.querySelector(".msg.coach.speaking");
+      if (el) el.classList.remove("speaking");
+    }
+
     window.__setLang = function (lang) {
       if (!LANGS[lang]) return;
       stopCall();
       currentLang = lang;
+      setStore("s365_lang", lang);
       ["zh", "en", "ja"].forEach(function (id) { $("tab-" + id).classList.toggle("active", id === lang); });
       var info = LANGS[lang];
       $("callerAvatar").textContent = info.avatar;
@@ -1591,60 +1598,83 @@
       var opts = "";
       for (var j = 0; j < info.levels.length; j++) opts += '<option value="' + (j + 1) + '">' + esc(info.levels[j]) + '</option>';
       $("stageSelect").innerHTML = opts;
-      var saved = getStore("s365_stage_" + lang, "1");
-      $("stageSelect").value = saved;
+      $("stageSelect").value = getStore("s365_stage_" + lang, "1");
 
       chats[lang] = [];
       resetQuestionOrder(lang);
       var q = info.questions[0];
-      var first = { sender: "coach", target: q.t, reading: q.r, kor: q.p, ko: q.k };
-      chats[lang].push(first);
-      updateCoachCard(first);
+      chats[lang].push({ sender: "coach", target: q.t, reading: q.r, kor: q.p, ko: q.k });
+      speakingIdx = -1;
       renderChat();
-      refreshCorrBanner(false);
+      refreshCorrBanner();
       setPhase("idle");
+      if (currentTab !== "call") renderTab(currentTab);
     };
 
     $("stageSelect").addEventListener("change", function () { setStore("s365_stage_" + currentLang, this.value); });
 
-    window.__replay = function () {
-      var last = getLastCoachMsg();
-      speakCoach(last.target, afterCoach);
+    window.__replay = function () { window.__replayAt(lastCoachIndex()); };
+    window.__replayAt = function (i) {
+      var m = chats[currentLang][i];
+      if (!m || phase === "think") return;
+      speakingIdx = i;
+      var els = document.querySelectorAll("#chatList .msg.coach");
+      for (var k = 0; k < els.length; k++) els[k].classList.remove("speaking");
+      // i번째 메시지에 해당하는 DOM 찾기
+      var all = $("chatList").children, idx = 0;
+      for (var n = 0; n < all.length; n++) {
+        if (all[n].id === "liveBubble" || all[n].id === "typingBubble") continue;
+        if (idx === i) { all[n].classList.add("speaking"); break; }
+        idx++;
+      }
+      speakCoach(m.target, afterCoach);
     };
 
     window.__toggleSub = function () {
       showSub = !showSub;
-      $("phoneCard").classList.toggle("hide-sub", !showSub);
-      $("btnCcToggle").textContent = showSub ? "자막 ON" : "자막 OFF";
+      $("chatList").classList.toggle("hide-sub", !showSub);
+      var b = $("btnCcToggle");
+      b.textContent = showSub ? "자막 ON" : "자막 OFF";
+      b.classList.toggle("on", showSub);
+      toast(showSub ? "발음·뜻을 보여줘요" : "자막을 숨겼어요 · 듣기 연습 모드", 1600);
     };
 
     window.__slow = function () {
       slowMode = !slowMode;
-      var b = $("btnSlowDown");
-      b.classList.toggle("on", slowMode);
-      b.textContent = slowMode ? "🐢 천천히 ON" : "🐢 천천히 말하기";
-      toast(slowMode ? "코치가 천천히 말해요" : "원래 속도로 돌아왔어요", 1800);
-      var last = getLastCoachMsg();
-      speakCoach(last.target, afterCoach);
+      $("btnSlowDown").classList.toggle("on", slowMode);
+      toast(slowMode ? "🐢 코치가 천천히 말해요" : "원래 속도로 돌아왔어요", 1600);
+      if (isCalling) window.__replay();
     };
 
     window.__hint = function () {
       var hints = LANGS[currentLang].hints;
-      $("coachKoText").textContent = hints[hintIdx % hints.length];
+      chats[currentLang].push({ sender: "sys", target: hints[hintIdx % hints.length] });
       hintIdx++;
-      if (!showSub) window.__toggleSub();
+      renderChat();
+    };
+
+    window.__hangup = function () {
+      playTone(440, 330);
+      stopCall();
+      toast("통화를 끊었어요. 📈 기록·복습 탭에서 오늘 학습을 확인할 수 있어요.", 2600);
     };
 
     window.__end = function () {
       var mins = Math.floor(callSeconds / 60), secs = callSeconds % 60;
       stopCall();
-      $("callStateBadge").textContent = "🏁 수업 종료 · 수고하셨습니다!";
-      $("bottomMainText").textContent = "오늘의 1:1 전화 수업 완료";
-      $("bottomSubText").textContent = "🏫 강의실에서 교정 노트와 학습 카드를 확인하세요";
       openClass(mins, secs, true);
+      window.__tab("review");
       callSeconds = 0;
-      $("callTimer").textContent = "⏱ 00:00 / 20:00";
+      $("callTimer").textContent = "00:00 / 20:00";
     };
+
+    function showType(on) {
+      $("typeRow").classList.toggle("show", on);
+      $("btnType").classList.toggle("on", on);
+      if (on) setTimeout(function () { try { $("manualInput").focus(); } catch (e) {} }, 50);
+      scrollChat();
+    }
+    window.__toggleType = function () { showType(!$("typeRow").classList.contains("show")); };
 
     window.__send = function () {
       var inp = $("manualInput"), v = inp.value.trim();
@@ -1657,11 +1687,96 @@
       if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); window.__send(); }
     });
 
-    /* ---------------- 모달 ---------------- */
-    window.__closeModal = function (id) { $(id).classList.remove("show"); };
-    ["vocabModal", "classroomModal", "settingsModal"].forEach(function (id) {
-      $(id).addEventListener("click", function (e) { if (e.target === this) window.__closeModal(id); });
-    });
+    /* ---------------- 탭 ---------------- */
+    var currentTab = "call";
+    function renderTab(name) {
+      if (name === "review") renderReview();
+      else if (name === "vocab") renderVocab();
+      else if (name === "settings") renderSettings();
+      else if (name === "call") scrollChat();
+    }
+    window.__tab = function (name) {
+      currentTab = name;
+      ["call", "review", "vocab", "settings"].forEach(function (n) {
+        $("view-" + n).classList.toggle("active", n === name);
+        $("tabbtn-" + n).classList.toggle("active", n === name);
+      });
+      renderTab(name);
+    };
+    window.__closeModal = function () {};
+    window.__openClass = function () { window.__tab("review"); };
+    window.__openVocab = function () { window.__tab("vocab"); };
+    window.__openSettings = function () { window.__tab("settings"); };
+
+    /* ---------------- 학습 기록 ---------------- */
+    function pad2(n) { return (n < 10 ? "0" : "") + n; }
+    function dayKey(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+    function getStats() { try { return JSON.parse(getStore("s365_stats", "{}")) || {}; } catch (e) { return {}; } }
+    function bumpStat(field, n) {
+      var s = getStats(), k = dayKey(new Date());
+      if (!s[k]) s[k] = { sec: 0, turns: 0 };
+      s[k][field] = (s[k][field] || 0) + n;
+      var keys = Object.keys(s).sort();
+      while (keys.length > 120) delete s[keys.shift()];
+      setStore("s365_stats", JSON.stringify(s));
+    }
+    function studied(d) { return d && ((d.sec || 0) >= 30 || (d.turns || 0) > 0); }
+    function streakDays(s) {
+      var d = new Date(), n = 0;
+      if (!studied(s[dayKey(d)])) d.setDate(d.getDate() - 1);
+      while (studied(s[dayKey(d)])) { n++; d.setDate(d.getDate() - 1); }
+      return n;
+    }
+
+    function renderReview() {
+      var s = getStats(), today = s[dayKey(new Date())] || { sec: 0, turns: 0 };
+      $("stToday").innerHTML = Math.floor((today.sec || 0) / 60) + "<small>분</small>";
+      $("stStreak").innerHTML = streakDays(s) + "<small>일</small>";
+      $("stTurns").innerHTML = (today.turns || 0) + "<small>회</small>";
+      $("reviewSub").textContent = LANGS[currentLang].label + " 교정 노트 · 학습 시간은 세 언어 합계예요";
+
+      var days = [], max = 1, total = 0, names = ["일", "월", "화", "수", "목", "금", "토"];
+      for (var i = 6; i >= 0; i--) {
+        var d = new Date(); d.setDate(d.getDate() - i);
+        var rec = s[dayKey(d)] || {}, m = Math.round((rec.sec || 0) / 60);
+        days.push({ m: m, l: i === 0 ? "오늘" : names[d.getDay()], today: i === 0 });
+        if (m > max) max = m; total += m;
+      }
+      $("weekBars").innerHTML = days.map(function (x) {
+        return '<div class="wcol' + (x.today ? ' today' : '') + '"><div style="font-size:10px; color:var(--sub); font-weight:700;">' + (x.m || "") + '</div>' +
+          '<div class="wbar" style="height:' + Math.max(4, Math.round(x.m / max * 60)) + 'px"></div><div class="wlbl">' + x.l + '</div></div>';
+      }).join("");
+      $("weekTotal").textContent = "총 " + total + "분";
+
+      var arr = getCorr(), box = $("reviewList");
+      $("reviewCount").textContent = arr.length ? arr.length + "개" : "";
+      if (!arr.length) {
+        box.innerHTML = '<div class="panel empty">' + (hasApiKey()
+          ? "아직 복습할 표현이 없어요.<br>통화하면서 AI가 고쳐준 표현이 여기에 쌓여요."
+          : "교정 표현은 AI 대화 모드에서 쌓여요.<br>⚙️ 설정에서 API 키를 등록해 주세요.") + '</div>';
+      } else {
+        box.innerHTML = arr.map(function (c, i) {
+          return '<div class="rcard" onclick="this.classList.toggle(\'open\')">' +
+            '<div class="q">내가 한 말</div><div class="orig">' + esc(c.original) + '</div>' +
+            '<div class="tap">👆 눌러서 자연스러운 표현 보기</div>' +
+            '<div class="ans"><div class="q">✨ 이렇게 말해요</div><div class="fixed">' + esc(c.fixed) + '</div>' +
+            (c.reason ? '<div class="why">' + esc(c.reason) + '</div>' : '') +
+            '<div class="acts"><button type="button" onclick="event.stopPropagation(); window.__sayFix(' + i + ')">🔊 듣기</button>' +
+            '<button type="button" class="ok" onclick="event.stopPropagation(); window.__learned(' + i + ')">✓ 외웠어요</button></div></div></div>';
+        }).join("");
+      }
+      openClass(Math.floor(callSeconds / 60), callSeconds % 60, false, true);
+    }
+    window.__sayFix = function (i) { var c = getCorr()[i]; if (c) speakText(c.fixed); };
+    window.__learned = function (i) {
+      var arr = getCorr();
+      if (!arr[i]) return;
+      arr.splice(i, 1);
+      setStore("steady_corr_" + currentLang, JSON.stringify(arr));
+      refreshCorrBanner();
+      renderReview();
+      toast("👏 잘했어요! 복습 목록에서 뺐어요.", 1500);
+    };
 
     function userTurnCount() {
       var n = 0, l = chats[currentLang];
@@ -1673,22 +1788,12 @@
       var stageEl = $("stageSelect");
       var stageName = stageEl.options[stageEl.selectedIndex] ? stageEl.options[stageEl.selectedIndex].text : "";
       var turns = userTurnCount();
-      var mm = String(mins).padStart(2, "0"), ss = String(secs).padStart(2, "0");
+      var mm = pad2(mins), ss = pad2(secs);
       $("lessonStatsText").innerHTML =
-        "과목: <b>" + info.label + "</b> (" + esc(stageName) + ")<br>" +
-        "상태: <b>" + (ended ? "수업 완료" : (isCalling ? "수업 진행 중" : "대기 중")) + "</b> · 통화 시간: <b>" + mm + "분 " + ss + "초</b> · 내 발화: <b>" + turns + "회</b>";
-
-      var arr = getCorr(), listEl = $("modalCorrList");
-      if (!arr.length) {
-        listEl.textContent = hasApiKey() ? "아직 교정된 표현이 없습니다. 통화하며 대화하면 자동으로 기록돼요." : "교정 노트는 AI 자유대화 모드(⚙️설정 → API 키)에서 자동으로 기록돼요.";
-      } else {
-        var h = "";
-        for (var i = 0; i < arr.length; i++) {
-          h += '<div style="margin-bottom:7px;">• <span style="text-decoration:line-through;">' + esc(arr[i].original) + '</span> → <b style="color:var(--text)">' + esc(arr[i].fixed) + '</b>' + (arr[i].reason ? ' <span style="font-size:12px;">(' + esc(arr[i].reason) + ')</span>' : '') + '</div>';
-        }
-        listEl.innerHTML = h;
-      }
-
+        "과목: <b>" + info.label + "</b> · " + esc(stageName) + "<br>" +
+        "상태: <b>" + (ended ? "수업 완료 🎉" : (isCalling ? "수업 진행 중" : "대기 중")) + "</b><br>" +
+        "통화 시간: <b>" + mm + "분 " + ss + "초</b> · 내 발화: <b>" + turns + "회</b>";
+      var arr = getCorr();
       var mine = [], l = chats[currentLang];
       for (var k = 0; k < l.length; k++) if (l[k].sender === "user") mine.push(l[k].target);
       $("studyCardText").value =
@@ -1699,11 +1804,7 @@
         "마지막 코치 질문: " + getLastCoachMsg().target + "\n" +
         (arr.length ? "추천 교정 표현: " + arr.slice(0, 3).map(function (a) { return a.fixed; }).join(" / ") + "\n" : "") +
         "복습 미션: 교정 표현을 소리 내어 3회 반복하기";
-      $("classroomModal").classList.add("show");
     }
-    window.__openClass = function () {
-      openClass(Math.floor(callSeconds / 60), callSeconds % 60, false);
-    };
 
     window.__copyCard = function () {
       var ta = $("studyCardText"), text = ta.value;
@@ -1715,31 +1816,29 @@
       }
     };
 
-    window.__openVocab = function () {
+    /* ---------------- 단어장 ---------------- */
+    function renderVocab() {
       var info = LANGS[currentLang];
-      $("vocabModalTitle").textContent = "📖 " + info.label + " 핵심 단어장";
-      var h = "";
-      for (var i = 0; i < info.vocab.length; i++) {
-        var v = info.vocab[i];
-        h += '<div style="background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:9px 11px; display:flex; justify-content:space-between; align-items:center; gap:8px;">' +
-             '<div><strong style="font-size:14px;">' + esc(v.word) + '</strong>' + (v.read ? ' <span style="font-size:12px; color:var(--accent);">' + esc(v.read) + '</span>' : '') + (v.kor ? ' <span style="font-size:12px; color:#10B981;">[' + esc(v.kor) + ']</span>' : '') +
-             '<div style="font-size:12px; color:var(--sub); margin-top:2px;">' + esc(v.meaning) + '</div></div>' +
-             '<button type="button" class="top-btn" style="color:var(--accent);" onclick="window.__speakWord(' + i + ')">🔊 발음</button></div>';
-      }
-      $("vocabListContainer").innerHTML = h;
-      $("vocabModal").classList.add("show");
-    };
-    window.__speakWord = function (i) {
-      var v = LANGS[currentLang].vocab[i];
-      if (!v || !("speechSynthesis" in window)) return;
+      $("vocabTitle").textContent = info.label + " 단어장";
+      $("vocabListContainer").innerHTML = info.vocab.map(function (v, i) {
+        return '<div class="vitem"><div style="min-width:0;"><div><span class="vword">' + esc(v.word) + '</span>' +
+          (v.read ? '<span class="vread">' + esc(v.read) + '</span>' : '') + '</div>' +
+          (v.kor ? '<div class="vkor">🔈 ' + esc(v.kor) + '</div>' : '') +
+          '<div class="vmean">' + esc(v.meaning) + '</div></div>' +
+          '<button type="button" class="vplay" onclick="window.__speakWord(' + i + ')" aria-label="발음 듣기">🔊</button></div>';
+      }).join("");
+    }
+    function speakText(text) {
+      if (!("speechSynthesis" in window) || !text) return;
       if (isCalling) stopCall();
       cancelSpeech();
-      var u = new SpeechSynthesisUtterance(v.word);
+      var u = new SpeechSynthesisUtterance(text);
       u.lang = LANGS[currentLang].code;
       u.rate = 0.85;
       var voice = pickVoice(); if (voice) u.voice = voice;
-      window.speechSynthesis.speak(u);
-    };
+      try { window.speechSynthesis.speak(u); } catch (e) {}
+    }
+    window.__speakWord = function (i) { var v = LANGS[currentLang].vocab[i]; if (v) speakText(v.word); };
 
     /* ---------------- 설정 ---------------- */
     function renderDiag() {
@@ -1752,7 +1851,7 @@
       if (!sr) lines.push("👉 안드로이드는 <b>크롬</b>, 아이폰은 <b>사파리</b>에서 열어주세요.");
       $("diagBox").innerHTML = lines.join("<br>");
     }
-    window.__openSettings = function () {
+    function renderSettings() {
       $("darkToggle").checked = darkMode;
       $("autoToggle").checked = autoSend;
       $("rateRange").value = baseRate;
@@ -1760,8 +1859,7 @@
       renderProvider(getProvider());
       renderSwatches();
       renderDiag();
-      $("settingsModal").classList.add("show");
-    };
+    }
     window.__setRate = function (v) {
       baseRate = parseFloat(v) || 0.95;
       setStore("s365_rate", String(baseRate));
@@ -1907,7 +2005,7 @@
 
     /* ---------------- 시작 ---------------- */
     applyTheme();
-    window.__setLang("zh");
+    window.__setLang(getStore("s365_lang", "zh"));
     if (inAppBrowser()) setTimeout(function () { toast("앱 내 브라우저에서는 음성인식이 안 될 수 있어요. 크롬/사파리로 열어주세요.", 5000); }, 800);
   })();
   </script>
