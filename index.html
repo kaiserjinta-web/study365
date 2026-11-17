@@ -980,7 +980,44 @@
         // 직전에 cancel 했으면 크롬 버그 때문에 잠깐 쉬고 재생, 아니면 즉시 재생(아이폰은 터치 직후 재생해야 소리가 남)
         if (busy && idx === 1) setTimeout(go, 150); else go();
       }
-      next();
+      // 스피커 사용 시: 마이크가 완전히 꺼지고 휴대폰 소리가 '미디어(스피커)' 모드로 돌아온 뒤 재생
+      whenMicReleased(token, function () {
+        setAudioSession("playback");
+        next();
+      });
+    }
+
+    var lastRecEnd = 0;
+    function setAudioSession(type) {
+      // 아이폰 사파리 17+ : 소리를 수화기 대신 스피커로 내보내도록 지정
+      try { if (navigator.audioSession) navigator.audioSession.type = type; } catch (e) {}
+    }
+    function whenMicReleased(token, cb) {
+      var t0 = Date.now();
+      (function wait() {
+        if (token !== speakToken) return;
+        if (recActive && Date.now() - t0 < 1500) { setTimeout(wait, 50); return; }
+        var since = Date.now() - lastRecEnd;
+        if (lastRecEnd && since < 500) { setTimeout(cb, 500 - since); return; }
+        cb();
+      })();
+    }
+
+    // 스피커로 나온 코치 목소리를 마이크가 다시 받아 적은 경우 걸러내기
+    function normTxt(t) { return String(t || "").toLowerCase().replace(/[\s.,!?。，！？、…~'"“”‘’:;()\-]/g, ""); }
+    function isEcho(text) {
+      var t = normTxt(text), c = normTxt(getLastCoachMsg().target);
+      if (t.length < 4 || !c) return false;
+      if (c.indexOf(t) !== -1) return true;
+      if (currentLang === "en") {
+        var w = String(text).toLowerCase().match(/[a-z']+/g) || [], cw = String(getLastCoachMsg().target).toLowerCase().match(/[a-z']+/g) || [];
+        if (w.length < 3) return false;
+        var hit = w.filter(function (x) { return cw.indexOf(x) !== -1; }).length;
+        return hit / w.length >= 0.85;
+      }
+      var hitc = 0;
+      for (var i = 0; i < t.length; i++) if (c.indexOf(t[i]) !== -1) hitc++;
+      return hitc / t.length >= 0.9 && t.length >= 6;
     }
 
     /* ---------------- 음성인식 (중복 단어 버그 수정) ---------------- */
@@ -1056,6 +1093,7 @@
 
       rec.onend = function () {
         recActive = false;
+        lastRecEnd = Date.now();
         var piece = (sesFinal || sesInterim).trim();
         sesFinal = ""; sesInterim = "";
         if (recTurn === curTurn && piece) committed = joinText(committed, piece);
@@ -1081,6 +1119,7 @@
       recTurn = curTurn;
       try {
         rec.lang = LANGS[currentLang].code;
+        setAudioSession("play-and-record");
         recActive = true;
         rec.start();
       } catch (e) {
@@ -1136,6 +1175,11 @@
       committed = ""; sesFinal = ""; sesInterim = "";
       curTurn++;
       showLive("");
+      if (text && isEcho(text)) {
+        toast("🔊 코치 목소리가 마이크에 다시 들어갔어요. 휴대폰을 입에서 조금 떨어뜨리거나 볼륨을 낮춰 주세요. 다시 말씀하세요!", 4500);
+        if (isCalling) startListening();
+        return;
+      }
       if (text) {
         handleUserReply(text);
       } else {
@@ -1171,7 +1215,8 @@
     }
     function afterCoach() {
       if (!isCalling) { setPhase("idle"); return; }
-      setTimeout(function () { if (isCalling && phase === "coach") startListening(); }, 250);
+      // 스피커 여운이 마이크에 들어가지 않도록 잠깐 쉬었다가 듣기 시작
+      setTimeout(function () { if (isCalling && phase === "coach") startListening(); }, 500);
     }
 
     function startTimer() {
