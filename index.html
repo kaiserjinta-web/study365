@@ -395,7 +395,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-15</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-16</span></div>
 
 
       <div class="panel">
@@ -3000,15 +3000,43 @@
       var v = data && data.items && data.items[i];
       if (v) speakText(ex ? v.example : v.word);
     };
+    // 단어장·복습 카드 발음 듣기 (통화 기능과 별개)
     function speakText(text) {
-      if (!("speechSynthesis" in window) || !text) return;
+      var synth = window.speechSynthesis;
+      if (!synth || !text) { toast("이 브라우저는 발음 듣기를 지원하지 않아요", 2000); return; }
       if (isCalling) stopCall();
-      cancelSpeech();
+      // 통화 모드 소리 설정이 남아 있으면 소리가 작거나 안 나와서 기본으로 되돌림
+      setAudioSession("auto");
       var u = new SpeechSynthesisUtterance(text);
       u.lang = LANGS[currentLang].code;
       u.rate = 0.85;
+      u.volume = 1;
       var voice = pickVoice(); if (voice) u.voice = voice;
-      try { window.speechSynthesis.speak(u); } catch (e) {}
+      var started = false;
+      u.onstart = function () { started = true; };
+      u.onerror = function (e) {
+        logSR("발음 듣기 오류: " + (e && e.error));
+        // 지정한 음성이 문제면 기본 음성으로 한 번 더
+        if (!started && u.voice && e && e.error !== "interrupted" && e.error !== "canceled") {
+          var u2 = new SpeechSynthesisUtterance(text); u2.lang = u.lang; u2.rate = 0.85;
+          try { synth.speak(u2); } catch (er) {}
+        }
+      };
+      var busy = false;
+      try { busy = synth.speaking || synth.pending; } catch (e) {}
+      if (busy) {
+        // 재생 중에 바로 이어서 speak 하면 아이폰·크롬에서 소리가 안 나는 버그 → 잠깐 쉬고 재생
+        try { synth.cancel(); } catch (e) {}
+        setTimeout(function () { try { synth.resume(); synth.speak(u); } catch (e) {} }, 180);
+      } else {
+        try { synth.resume(); } catch (e) {}
+        try { synth.speak(u); } catch (e) {}
+      }
+      setTimeout(function () {
+        var going = false;
+        try { going = started || synth.speaking; } catch (e) {}
+        if (!going) toast("🔇 소리가 안 나면: 무음 모드 해제·미디어 볼륨을 올리고, 아이폰 설정에서 " + LANGS[currentLang].label + " 음성이 설치돼 있는지 확인해 주세요.", 5000);
+      }, 2500);
     }
     window.__speakWord = function (i) { var v = LANGS[currentLang].vocab[i]; if (v) speakText(v.word); };
 
@@ -3044,7 +3072,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-15 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-16 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
