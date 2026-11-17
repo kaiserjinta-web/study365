@@ -391,7 +391,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-6</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-7</span></div>
 
 
       <div class="panel">
@@ -1120,6 +1120,7 @@
         if (!mine()) return;
         clearTimeout(startWatch);
         recActive = true;
+        if (isIOS) armHang(r);
         retryCount = 0;
         if (tag) logSR(tag);
         if (phase === "listen") $("statusLine").textContent = autoSend ? "🎙️ 듣고 있어요 · 멈추면 자동 전송돼요" : "🎙️ 듣고 있어요 · 다 말했으면 가운데 버튼";
@@ -1131,6 +1132,7 @@
       r.onresult = function (e) {
         if (!mine()) return;
         alive("");
+        clearTimeout(hangWatch); hangCount = 0;
         var fin = "", inter = "";
         for (var i = 0; i < e.results.length; i++) {
           var t = e.results[i][0].transcript;
@@ -1176,6 +1178,7 @@
       r.onend = function () {
         if (!mine()) return;
         clearTimeout(startWatch);
+        clearTimeout(hangWatch);
         recActive = false;
         lastRecEnd = Date.now();
         var piece = (sesFinal || sesInterim).trim();
@@ -1422,11 +1425,47 @@
       recBlocked = false;
       wantListen = true;
       setPhase("listen");
+      if (isIOS) {
+        // 아이폰: 코치 음성 재생 뒤 마이크가 잠기는 버그 → 음성 엔진 정리 + 무음 재생으로 잠금 풀기
+        try { window.speechSynthesis.cancel(); } catch (e) {}
+        silentUnlock();
+      }
       createRec();          // 턴마다 새 객체
       safeStart();
     }
 
+    // 아이폰 '멈춤' 감지: 마이크가 켜졌는데 8초 동안 아무 결과도 없으면 멈춘 것으로 보고 버튼으로 되돌림
+    var hangWatch = null, hangCount = 0;
+    function armHang(r) {
+      clearTimeout(hangWatch);
+      hangWatch = setTimeout(function () {
+        if (rec !== r || phase !== "listen") return;
+        if (committed || sesFinal || sesInterim) return;
+        logSR("멈춤 감지");
+        hangCount++;
+        wantListen = false;
+        try { r.abort(); } catch (e) {}
+        setPhase("ready");
+        $("statusLine").textContent = "🎤 마이크가 멈췄어요 · 버튼을 눌러 다시 말해 주세요";
+        if (hangCount === 2) toast("아이폰에서 음성인식이 자꾸 멈추면 ⚙️설정 → 🤖 AI 음성인식을 켜 보세요 (실시간 글자 대신 말이 끝난 뒤 표시돼요)", 6000);
+      }, 8000);
+    }
+    var silentEl = null;
+    function silentUnlock() {
+      try {
+        if (!silentEl) {
+          var z = [new Float32Array(4800)];
+          silentEl = new Audio("data:audio/wav;base64," + encodeWav(z, 4800, 16000, 16000));
+          silentEl.setAttribute("playsinline", "");
+        }
+        silentEl.currentTime = 0;
+        var pr = silentEl.play();
+        if (pr && pr.then) pr.then(function () { setTimeout(function () { try { silentEl.pause(); silentEl.currentTime = 0; } catch (e) {} }, 150); }).catch(function () {});
+      } catch (e) {}
+    }
+
     function stopListening() {
+      clearTimeout(hangWatch);
       if (recStream || recording) stopRecordingTracks();
       wantListen = false;
       pendingSend = false;
@@ -2277,7 +2316,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-6 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-7 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
