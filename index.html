@@ -412,6 +412,10 @@
           </div>
         </div>
         <div class="row">
+          <div><div class="lbl">🎤 버튼 눌러서 말하기</div><div class="desc">코치 말이 끝나면 가운데 버튼을 눌러 마이크를 켜요. 아이폰에서 인식이 훨씬 안정적이에요</div></div>
+          <label class="switch"><input type="checkbox" id="tapToggle" onchange="window.__setTap(this.checked)"><span></span></label>
+        </div>
+        <div class="row">
           <div><div class="lbl">자동 전송</div><div class="desc">말을 멈추면 가운데 버튼을 안 눌러도 자동으로 보냄</div></div>
           <label class="switch"><input type="checkbox" id="autoToggle" onchange="window.__setAuto(this.checked)"><span></span></label>
         </div>
@@ -634,6 +638,9 @@
     var baseRate = parseFloat(getStore("s365_rate", "0.95")) || 0.95;
     var slowMode = false;
     var autoSend = getStore("s365_auto", "0") === "1";
+    var isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent || "") || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    // 아이폰은 사용자가 버튼을 누른 순간에 마이크를 켜야 인식이 안정적 → 기본으로 '눌러서 말하기'
+    var tapMode = getStore("s365_tap", isIOS ? "1" : "0") === "1";
     var chats = { zh: [], en: [], ja: [] };
     var qOrder = { zh: [], en: [], ja: [] };
     var hintIdx = 0;
@@ -713,6 +720,9 @@
         big.classList.add("listen"); lbl.textContent = autoSend ? "듣는 중…" : "다 말했으면 탭";
         av.classList.add("listening");
         st.textContent = autoSend ? "🎙️ 말씀하세요 · 멈추면 자동 전송돼요" : "🎙️ 말씀하세요 · 끝나면 가운데 버튼을 누르세요";
+      } else if (p === "ready") {
+        ic.textContent = "🎤"; lbl.textContent = "눌러서 말하기";
+        st.textContent = "🎤 가운데 버튼을 누르고 말하세요";
       } else if (p === "think") {
         big.classList.add("think"); lbl.textContent = "생각 중…";
         st.textContent = "💭 코치가 답변을 생각하고 있어요";
@@ -1067,7 +1077,9 @@
       }
       var r = new SR();
       var my = ++recSeq;
-      r.continuous = false;       // continuous=true 가 모바일 중복 인식의 주범 → 짧은 세션을 자동 재시작
+      // 안드로이드: continuous=true 가 중복 인식의 주범 → 짧은 세션 자동 재시작
+      // 아이폰: 재시작이 잘 안 되므로 한 세션으로 계속 듣기
+      r.continuous = isIOS;
       r.interimResults = true;
       r.maxAlternatives = 1;
       r.lang = LANGS[currentLang].code;
@@ -1234,14 +1246,14 @@
       showLive("");
       if (text && isEcho(text)) {
         toast("🔊 코치 목소리가 마이크에 다시 들어갔어요. 휴대폰을 입에서 조금 떨어뜨리거나 볼륨을 낮춰 주세요. 다시 말씀하세요!", 4500);
-        if (isCalling) startListening();
+        if (isCalling) resumeListen();
         return;
       }
       if (text) {
         handleUserReply(text);
       } else {
         toast("인식된 음성이 없어요. 조금 더 크게 말씀하시거나 아래 입력창을 이용해 주세요.");
-        if (isCalling) startListening();
+        if (isCalling) resumeListen();
       }
     }
 
@@ -1270,8 +1282,13 @@
       if (isCalling) speakCoach(msg.target, function () { afterCoach(); });
       else setPhase("idle");
     }
+    function resumeListen() {
+      if (!isCalling) { setPhase("idle"); return; }
+      if (tapMode) setPhase("ready"); else startListening();
+    }
     function afterCoach() {
       if (!isCalling) { setPhase("idle"); return; }
+      if (tapMode) { setPhase("ready"); return; }
       // 스피커 여운이 마이크에 들어가지 않도록 잠깐 쉬었다가 듣기 시작
       setTimeout(function () { if (isCalling && phase === "coach") startListening(); }, 500);
     }
@@ -1311,7 +1328,7 @@
       if (phase === "coach") { cancelSpeech(); startListening(); return; }
       if (phase === "listen") { finishSpeaking(); return; }
       if (phase === "think") return;
-      startListening();
+      startListening();   // ready / type 상태: 버튼을 누른 순간 마이크 켜기
     };
 
     function handleUserReply(text) {
@@ -1326,7 +1343,7 @@
       var key = providerKey();
       if (key) {
         try { requestAI(text, false); }
-        catch (err) { toast("⚠️ 요청 준비 중 오류: " + (err && err.message)); if (isCalling) startListening(); else setPhase("idle"); }
+        catch (err) { toast("⚠️ 요청 준비 중 오류: " + (err && err.message)); resumeListen(); }
       }
       else {
         if (!offlineWarned) {
@@ -1591,7 +1608,7 @@
       // 내 말은 그대로 두고, 오류 내용과 [다시 시도] 버튼을 대화창에 표시
       l.push({ sender: "sys", retry: true, target: "⚠️ 코치가 답하지 못했어요 · " + msg });
       renderChat();
-      if (isCalling) startListening(); else setPhase("idle");
+      resumeListen();
     }
     window.__retryAI = function () {
       var l = chats[currentLang];
@@ -1991,6 +2008,7 @@
     function renderSettings() {
       $("darkToggle").checked = darkMode;
       $("autoToggle").checked = autoSend;
+      $("tapToggle").checked = tapMode;
       $("rateRange").value = baseRate;
       $("rateLabel").textContent = "×" + baseRate.toFixed(2);
       renderProvider(getProvider());
@@ -2001,6 +2019,11 @@
       baseRate = parseFloat(v) || 0.95;
       setStore("s365_rate", String(baseRate));
       $("rateLabel").textContent = "×" + baseRate.toFixed(2);
+    };
+    window.__setTap = function (on) {
+      tapMode = !!on;
+      setStore("s365_tap", tapMode ? "1" : "0");
+      toast(tapMode ? "🎤 코치 말이 끝나면 가운데 버튼을 눌러 말하세요" : "코치 말이 끝나면 마이크가 자동으로 켜져요", 2500);
     };
     window.__setAuto = function (on) {
       autoSend = !!on;
