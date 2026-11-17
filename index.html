@@ -391,7 +391,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-11</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-12</span></div>
 
 
       <div class="panel">
@@ -1035,7 +1035,7 @@
       // 스피커 사용 시: 마이크가 완전히 꺼지고 휴대폰 소리가 '미디어(스피커)' 모드로 돌아온 뒤 재생
       logSR("코치 음성 시작");
       whenMicReleased(token, function () {
-        setAudioSession("playback");
+        // (재생 전용 모드로 바꾸면 아이폰에서 다음 마이크 사용이 막혀서 바꾸지 않음)
         next();
       });
     }
@@ -1750,20 +1750,32 @@
       $("statusLine").textContent = "⚡ 실시간 통화 연결 중…";
       logSR("실시간 연결 시작");
       var s = live;
-      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
-        .then(function (stream) {
-          if (live !== s) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
-          s.stream = stream;
-          return pickLiveModel(key).then(function (models) {
-            if (live !== s) return;
-            s.models = models;
-            liveConnect(s);
-          });
-        })
-        .catch(function (err) {
-          logSR("실시간: 마이크 오류 " + (err && err.name));
-          liveGiveUp(s, (err && err.name === "NotAllowedError") ? "마이크 권한이 필요해요 (아이폰 설정 → 크롬 → 마이크 켜기)" : "마이크를 켤 수 없어요 (" + (err && err.name) + ")");
+      // 아이폰: 소리 모드가 '재생 전용'이면 마이크가 InvalidStateError 로 거부됨 → 통화(재생+녹음) 모드로
+      setAudioSession("play-and-record");
+      var constraints = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } };
+      function gotStream(stream) {
+        if (live !== s) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+        s.stream = stream;
+        logSR("실시간: 마이크 켜짐");
+        pickLiveModel(key).then(function (models) {
+          if (live !== s) return;
+          s.models = models;
+          try { liveConnect(s); } catch (e) { liveGiveUp(s, "연결 오류 (" + (e && e.name) + ")"); }
         });
+      }
+      function micFail(err, retried) {
+        logSR("실시간: 마이크 오류 " + (err && err.name) + (err && err.message ? " " + String(err.message).slice(0, 60) : ""));
+        if (!retried && err && err.name === "InvalidStateError") {
+          setAudioSession("auto");
+          setTimeout(function () {
+            setAudioSession("play-and-record");
+            navigator.mediaDevices.getUserMedia(constraints).then(gotStream, function (e2) { micFail(e2, true); });
+          }, 300);
+          return;
+        }
+        liveGiveUp(s, (err && err.name === "NotAllowedError") ? "마이크 권한이 필요해요 (아이폰 설정 → 크롬 → 마이크 켜기)" : "마이크를 켤 수 없어요 (" + (err && err.name) + ")");
+      }
+      navigator.mediaDevices.getUserMedia(constraints).then(gotStream, function (e) { micFail(e, false); });
     }
 
     function liveConnect(s) {
@@ -2854,7 +2866,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-11 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-12 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
