@@ -395,7 +395,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-14</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-15</span></div>
 
 
       <div class="panel">
@@ -2878,15 +2878,23 @@
           if (/gemini-2\.5-flash/.test(model)) gen.thinkingConfig = { thinkingBudget: 0 };
           else if (/gemini-[3-9]/.test(model)) gen.thinkingConfig = { thinkingLevel: "minimal" };
         }
+        var ctrl = (typeof AbortController !== "undefined") ? new AbortController() : null;
+        var tmr = setTimeout(function () { if (ctrl) ctrl.abort(); }, 30000);
         return fetch(API_BASE + "/models/" + encodeURIComponent(model) + ":generateContent", {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          signal: ctrl ? ctrl.signal : undefined,
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: sys }] },
             contents: [{ role: "user", parts: [{ text: "오늘(" + date + ")의 단어 10개를 만들어 주세요." }] }],
             generationConfig: gen
           })
-        }).then(readRes).then(function (res) {
+        }).then(readRes, function (err) {
+          clearTimeout(tmr);
+          if (err && err.name === "AbortError") return { ok: false, status: 0, j: { error: { message: "응답 시간 초과(30초) · " + model } } };
+          throw err;
+        }).then(function (res) {
+          clearTimeout(tmr);
           var em = (res.j && res.j.error && res.j.error.message) || "";
           if (!res.ok && res.status === 400 && /thinking/i.test(em) && !noThink[model]) { noThink[model] = true; return tryOne(); }
           var ok = res.ok && !res.j.error;
@@ -2935,6 +2943,7 @@
       $("vocabTitle").textContent = info.label + " 단어장";
       $("vocabRegen").style.display = hasKey ? "" : "none";
       $("vocabRegen").disabled = vocabView.loading;
+      $("vocabRegen").textContent = vocabView.loading ? "⏳ 만드는 중…" : "🔄 새로 만들기";
 
       // 날짜 선택 칩
       var chips = "";
@@ -2948,7 +2957,7 @@
       $("vocabDates").innerHTML = chips;
 
       var html = "";
-      if (vocabView.loading && vocabView.date === today && !data) {
+      if (vocabView.loading && vocabView.date === today) {
         $("vocabSub").textContent = "✨ 오늘의 단어를 만드는 중이에요… (몇 초 걸려요)";
         html = '<div class="panel empty"><span class="typing"><i></i><i></i><i></i></span><br>' + esc(info.label) + ' 단어 10개를 고르고 있어요</div>';
       } else if (data && data.items) {
@@ -2979,7 +2988,13 @@
       $("vocabListContainer").innerHTML = html;
     }
     window.__vocabDate = function (d) { vocabView.date = d; renderVocab(); };
-    window.__regenVocab = function () { vocabView.error = ""; vocabView.date = todayStr(); generateVocab(currentLang, true); renderVocab(); };
+    window.__regenVocab = function () {
+      if (vocabView.loading) { toast("단어를 만드는 중이에요. 잠시만 기다려 주세요.", 1800); return; }
+      vocabView.error = ""; vocabView.date = todayStr();
+      generateVocab(currentLang, true);
+      renderVocab();
+      try { $("view-vocab").scrollTop = 0; } catch (e) {}
+    };
     window.__speakVocab = function (i, ex) {
       var data = loadVocab(currentLang, vocabView.date);
       var v = data && data.items && data.items[i];
@@ -3029,7 +3044,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-14 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-15 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
