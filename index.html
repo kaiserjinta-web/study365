@@ -391,7 +391,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-10</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-11</span></div>
 
 
       <div class="panel">
@@ -410,6 +410,10 @@
             <div class="lbl">코치 말하기 속도 <span id="rateLabel" style="color:var(--accent);"></span></div>
             <input type="range" id="rateRange" min="0.6" max="1.2" step="0.05" oninput="window.__setRate(this.value)">
           </div>
+        </div>
+        <div class="row">
+          <div><div class="lbl">⚡ 실시간 통화 (Gemini Live · 추천)</div><div class="desc">진짜 전화처럼 바로 대답해요. 말하는 동안 내 말이 실시간 글자로 나오고, 코치는 자기 목소리로 답해요 (Gemini 키 필요 · 이어폰 권장)</div></div>
+          <label class="switch"><input type="checkbox" id="liveToggle" onchange="window.__setLive(this.checked)"><span></span></label>
         </div>
         <div class="row">
           <div><div class="lbl">🤖 AI 음성인식 (Gemini)</div><div class="desc">브라우저 음성인식 대신 녹음해서 Gemini가 알아들어요. 아이폰에서 두 번째 대화부터 인식이 멈추는 문제를 피해요 (Gemini 키 필요)</div></div>
@@ -838,7 +842,7 @@
           if (m.kor) sub += '<div class="b-kor">🔈 ' + esc(m.kor) + '</div>';
           if (m.ko) sub += '<div class="b-ko">' + esc(m.ko) + '</div>';
           html += '<div class="msg coach' + (i === speakingIdx ? ' speaking' : '') + '"><div class="msg-row"><div class="mini-av">' + av + '</div>' +
-            '<div class="bubble" onclick="window.__replayAt(' + i + ')"><div class="b-target">' + esc(m.target) + '</div>' +
+            '<div class="bubble" onclick="window.__replayAt(' + i + ')"><div class="b-target">' + (m.target ? esc(m.target) : '<span class="typing"><i></i><i></i><i></i></span>') + '</div>' +
             (sub ? '<div class="b-sub">' + sub + '</div>' : '') + '</div></div></div>';
         }
       }
@@ -1667,7 +1671,416 @@
       }, 1000);
     }
 
+    /* ================= ⚡ 실시간 통화 모드 (Gemini Live API) =================
+       하나의 연결로 내 목소리를 실시간 전송 → 말하는 동안 받아쓰기가 바로 표시되고,
+       코치는 자기 목소리로 즉시 답함. 브라우저 음성인식·음성합성을 쓰지 않아 아이폰 버그와 무관. */
+    var LIVE_FALLBACK = ["gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-12-2025"];
+    var live = null;   // 현재 실시간 세션 상태
+    var liveFailed = false;   // 이번 접속에서 실시간 모드가 실패하면 기존 방식으로
+    function liveMode() {
+      return !liveFailed && getProvider() === "gemini" && !!providerKey() && !!window.WebSocket &&
+        !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && getStore("s365_live", "1") === "1";
+    }
+
+    function pickLiveModel(key) {
+      var saved = getStore("s365_live_model", "");
+      return fetch(API_BASE + "/models?pageSize=1000", { headers: { "x-goog-api-key": key } })
+        .then(readRes)
+        .then(function (res) {
+          var names = ((res.j && res.j.models) || []).filter(function (m) {
+            return (m.supportedGenerationMethods || []).indexOf("bidiGenerateContent") !== -1;
+          }).map(function (m) { return String(m.name).replace(/^models\//, ""); })
+            .filter(function (n) { return !/transcribe|image|tts/i.test(n); });
+          function sc(n) {
+            var v = parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0;
+            return v * 10 + (/live/.test(n) ? 20 : 0) + (/native-audio/.test(n) ? 10 : 0) + (/flash/.test(n) ? 5 : 0) - (/pro/.test(n) ? 8 : 0);
+          }
+          names.sort(function (a, b) { return sc(b) - sc(a); });
+          var list = [];
+          if (saved && (!names.length || names.indexOf(saved) !== -1)) list.push(saved);
+          names.concat(LIVE_FALLBACK).forEach(function (n) { if (list.indexOf(n) === -1) list.push(n); });
+          return list;
+        })
+        .catch(function () { var l = saved ? [saved] : []; LIVE_FALLBACK.forEach(function (n) { if (l.indexOf(n) === -1) l.push(n); }); return l; });
+    }
+
+    function liveSystemPrompt() {
+      var info = LANGS[currentLang];
+      var stageEl = $("stageSelect");
+      var stage = stageEl.options[stageEl.selectedIndex] ? stageEl.options[stageEl.selectedIndex].text : "";
+      return [
+        "You are " + info.persona + ", on a live 1:1 PHONE CALL lesson with a Korean adult learner. Lesson level/topic: " + stage + ".",
+        "Speak ONLY in " + info.langName + ", naturally and warmly, like a real phone call. Keep each reply short: react specifically to what the learner just said, then ask ONE follow-up question about the same topic.",
+        "Speak a little slower and clearer than normal for a learner. If the learner speaks Korean or gets stuck, briefly help them say it in " + info.langName + " and encourage them to repeat.",
+        "Do not lecture about grammar during the call; corrections are shown on screen separately. Never repeat a question you already asked.",
+        "Start the call: greet the learner and ask how they have been lately."
+      ].join("\n");
+    }
+
+    function b64FromBytes(bytes) {
+      var bin = "", CH = 0x8000;
+      for (var c = 0; c < bytes.length; c += CH) bin += String.fromCharCode.apply(null, bytes.subarray(c, c + CH));
+      return btoa(bin);
+    }
+    function floatTo16kPcmB64(f32, inRate) {
+      var ratio = inRate / 16000, outLen = Math.floor(f32.length / ratio), pcm = new Int16Array(outLen);
+      for (var j = 0; j < outLen; j++) {
+        var st = Math.floor(j * ratio), en = Math.min(f32.length, Math.floor((j + 1) * ratio)), acc = 0, n = 0;
+        for (var k = st; k < en; k++) { acc += f32[k]; n++; }
+        var v = Math.max(-1, Math.min(1, n ? acc / n : 0));
+        pcm[j] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+      }
+      return b64FromBytes(new Uint8Array(pcm.buffer));
+    }
+
+    function startLiveCall() {
+      var key = providerKey();
+      var ctx = getACtx();   // 버튼을 누른 순간 → 아이폰에서 소리 재생 허용
+      if (!ctx) { liveFailed = true; window.__call(); return; }
+      isCalling = true;
+      syncCallButtons();
+      startTimer();
+      live = {
+        ws: null, ctx: ctx, capCtx: null, stream: null, src: null, node: null, ready: false, muted: false,
+        nextTime: 0, sources: [], coachIdx: -1, userIdx: -1, userText: "", turnAudio: [], handle: "",
+        models: [], modelIdx: 0, closedByUs: false, gotAnything: false, retries: 0, connectT: 0
+      };
+      setPhase("think");
+      $("bigLabel").textContent = "연결 중…";
+      $("statusLine").textContent = "⚡ 실시간 통화 연결 중…";
+      logSR("실시간 연결 시작");
+      var s = live;
+      navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } })
+        .then(function (stream) {
+          if (live !== s) { stream.getTracks().forEach(function (t) { t.stop(); }); return; }
+          s.stream = stream;
+          return pickLiveModel(key).then(function (models) {
+            if (live !== s) return;
+            s.models = models;
+            liveConnect(s);
+          });
+        })
+        .catch(function (err) {
+          logSR("실시간: 마이크 오류 " + (err && err.name));
+          liveGiveUp(s, (err && err.name === "NotAllowedError") ? "마이크 권한이 필요해요 (아이폰 설정 → 크롬 → 마이크 켜기)" : "마이크를 켤 수 없어요 (" + (err && err.name) + ")");
+        });
+    }
+
+    function liveConnect(s) {
+      var model = s.models[s.modelIdx];
+      if (!model) { liveGiveUp(s, "이 키로 쓸 수 있는 실시간 모델이 없어요"); return; }
+      s.ready = false; s.gotAnything = false; s.connectT = Date.now();
+      logSR("실시간 모델: " + model);
+      var ws;
+      try {
+        ws = new WebSocket("wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=" + encodeURIComponent(providerKey()));
+      } catch (e) { liveGiveUp(s, "실시간 연결을 만들 수 없어요"); return; }
+      s.ws = ws;
+      ws.onopen = function () {
+        if (live !== s || s.ws !== ws) return;
+        var setup = {
+          model: "models/" + model,
+          generationConfig: {
+            responseModalities: ["AUDIO"],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } }
+          },
+          systemInstruction: { parts: [{ text: liveSystemPrompt() }] },
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          contextWindowCompression: { slidingWindow: {} },
+          sessionResumption: s.handle ? { handle: s.handle } : {}
+        };
+        ws.send(JSON.stringify({ setup: setup }));
+      };
+      ws.onmessage = function (ev) {
+        if (live !== s || s.ws !== ws) return;
+        var d = ev.data;
+        if (typeof d === "string") liveOnMessage(s, d);
+        else if (d && d.text) d.text().then(function (t) { liveOnMessage(s, t); });
+        else if (d instanceof ArrayBuffer) liveOnMessage(s, new TextDecoder().decode(d));
+      };
+      ws.onerror = function () { logSR("실시간: 연결 오류"); };
+      ws.onclose = function (ev) {
+        if (s.ws !== ws) return;
+        logSR("실시간 연결 종료 " + ev.code + (ev.reason ? " " + String(ev.reason).slice(0, 80) : ""));
+        if (live !== s || s.closedByUs) return;
+        var reason = String(ev.reason || "");
+        if (!s.ready) {
+          // 설정 단계에서 끊김: 모델 문제면 다음 모델, 키 문제면 포기
+          if (/API key|permission|unauth|invalid.*key/i.test(reason)) { liveGiveUp(s, "API 키 인증 실패 · " + reason); return; }
+          if (s.modelIdx < s.models.length - 1 && s.modelIdx < 3) { s.modelIdx++; liveConnect(s); return; }
+          liveGiveUp(s, "실시간 연결 실패" + (reason ? " · " + reason : "")); return;
+        }
+        // 통화 중 끊김: 이어서 다시 연결 (최대 3번)
+        if (s.retries < 3) { s.retries++; $("statusLine").textContent = "🔄 연결이 끊겨 다시 연결하는 중…"; setTimeout(function () { if (live === s) liveConnect(s); }, 600); }
+        else { liveSys("⚠️ 실시간 연결이 끊겼어요 · " + (reason || ev.code)); stopCall(); }
+      };
+    }
+
+    function liveOnMessage(s, text) {
+      var m;
+      try { m = JSON.parse(text); } catch (e) { return; }
+      if (m.setupComplete) {
+        s.ready = true;
+        setStore("s365_live_model", s.models[s.modelIdx]);
+        logSR("실시간 준비 완료");
+        startLiveMic(s);
+        if (!s.started) {
+          s.started = true;
+          // 코치가 먼저 인사하도록 신호
+          try { s.ws.send(JSON.stringify({ realtimeInput: { text: "(전화가 연결되었습니다. 먼저 인사하고 질문해 주세요.)" } })); } catch (e) {}
+        }
+        liveSetListen(s);
+        return;
+      }
+      if (m.sessionResumptionUpdate && m.sessionResumptionUpdate.newHandle) s.handle = m.sessionResumptionUpdate.newHandle;
+      if (m.goAway) { logSR("실시간: 곧 재연결"); }
+      var sc = m.serverContent;
+      if (!sc) return;
+      s.gotAnything = true;
+      if (sc.inputTranscription && sc.inputTranscription.text) {
+        s.userText += sc.inputTranscription.text;
+        var ut = s.userText.trim();
+        if (s.userIdx >= 0 && chats[currentLang][s.userIdx]) { chats[currentLang][s.userIdx].target = ut; queueRender(); }
+        else showLive(ut);
+      }
+      if (sc.interrupted) { liveStopPlayback(s); }
+      if (sc.modelTurn && sc.modelTurn.parts) {
+        sc.modelTurn.parts.forEach(function (p) {
+          if (p.inlineData && /audio/.test(p.inlineData.mimeType || "") && p.inlineData.data) {
+            ensureCoachMsg(s);
+            livePlay(s, p.inlineData.data, p.inlineData.mimeType);
+          }
+        });
+      }
+      if (sc.outputTranscription && sc.outputTranscription.text) {
+        ensureCoachMsg(s);
+        var cm = chats[currentLang][s.coachIdx];
+        if (cm) { cm.target = (cm.target + sc.outputTranscription.text).replace(/^\s+/, ""); queueRender(); }
+      }
+      if (sc.turnComplete || sc.generationComplete) {
+        if (sc.turnComplete) liveTurnDone(s);
+      }
+    }
+
+    // 코치가 말하기 시작하면: 지금까지 받아쓴 내 말을 말풍선으로 확정
+    function ensureCoachMsg(s) {
+      if (s.coachIdx >= 0) return;
+      var ut = s.userText.trim();
+      showLive("");
+      if (ut) {
+        chats[currentLang].push({ sender: "user", target: ut });
+        s.userIdx = chats[currentLang].length - 1;
+        bumpStat("turns", 1);
+      }
+      chats[currentLang].push({ sender: "coach", target: "", reading: "", kor: "", ko: "", pcm: [] });
+      s.coachIdx = chats[currentLang].length - 1;
+      speakingIdx = s.coachIdx;
+      setPhase("coach");
+      $("statusLine").textContent = "🔊 코치가 말하는 중 · 말풍선을 누르면 다시 들어요";
+      queueRender();
+    }
+
+    function liveTurnDone(s) {
+      var ci = s.coachIdx, ui = s.userIdx;
+      var learner = ui >= 0 && chats[currentLang][ui] ? chats[currentLang][ui].target : "";
+      s.coachIdx = -1; s.userIdx = -1; s.userText = "";
+      queueRender();
+      if (ci >= 0) enrichLive(ci, ui, learner);
+      // 코치 음성이 다 끝나면 듣기 상태로
+      var wait = Math.max(0, (s.nextTime - s.ctx.currentTime) * 1000) + 200;
+      setTimeout(function () { if (live === s && s.coachIdx < 0) liveSetListen(s); }, wait);
+    }
+
+    function liveSetListen(s) {
+      if (live !== s || !isCalling) return;
+      clearSpeaking();
+      setPhase("listen");
+      $("bigLabel").textContent = s.muted ? "음소거됨" : "듣는 중 · 탭=음소거";
+      $("statusLine").textContent = s.muted ? "🔇 음소거 중 · 가운데 버튼을 누르면 다시 들어요" : "🎙️ 편하게 말하세요 · 말하는 동안 글자가 바로 나와요";
+    }
+
+    var renderQueued = false;
+    function queueRender() {
+      if (renderQueued) return;
+      renderQueued = true;
+      setTimeout(function () { renderQueued = false; renderChat(); }, 120);
+    }
+
+    function startLiveMic(s) {
+      if (s.node || !s.stream) return;
+      var ctx = s.ctx;
+      // 아이폰: 마이크가 켜진 뒤 만든 오디오 장치로 받아야 소리가 뭉개지지 않음
+      if (isIOS) {
+        try {
+          var AC = window.AudioContext || window.webkitAudioContext;
+          s.capCtx = new AC();
+          try { s.capCtx.resume(); } catch (e) {}
+          ctx = s.capCtx;
+        } catch (e) { ctx = s.ctx; }
+      }
+      function wire(c) {
+        s.src = c.createMediaStreamSource(s.stream);
+        s.node = (c.createScriptProcessor || c.createJavaScriptNode).call(c, 4096, 1, 1);
+        s.gotAudio = false;
+        s.node.onaudioprocess = function (e) {
+          s.gotAudio = true;
+          if (live !== s || !s.ready || s.muted || !s.ws || s.ws.readyState !== 1) return;
+          // 코치 목소리가 나오는 동안은 마이크를 보내지 않음 (스피커 소리가 다시 들어가는 것 방지)
+          if (s.ctx.currentTime < s.nextTime + 0.25) return;
+          var d = e.inputBuffer.getChannelData(0);
+          var sum = 0;
+          for (var i = 0; i < d.length; i += 8) sum += d[i] * d[i];
+          if (Math.sqrt(sum / (d.length / 8)) > 0.02) {
+            var w = $("waves"); w.classList.add("loud");
+            clearTimeout(startLiveMic._t);
+            startLiveMic._t = setTimeout(function () { w.classList.remove("loud"); }, 300);
+          }
+          try { s.ws.send(JSON.stringify({ realtimeInput: { audio: { mimeType: "audio/pcm;rate=16000", data: floatTo16kPcmB64(d, c.sampleRate) } } })); } catch (er) {}
+        };
+        s.src.connect(s.node);
+        s.node.connect(c.destination);
+      }
+      wire(ctx);
+      // 1.5초 안에 마이크 데이터가 안 오면 다른 오디오 장치로 다시 연결
+      setTimeout(function () {
+        if (live !== s || s.gotAudio || ctx === s.ctx) return;
+        logSR("실시간: 마이크 장치 전환");
+        try { s.node.disconnect(); s.src.disconnect(); } catch (e) {}
+        s.node = null;
+        wire(s.ctx);
+      }, 1500);
+    }
+
+    function livePlay(s, b64, mime) {
+      var rate = parseInt(((mime || "").match(/rate=(\d+)/) || [0, 24000])[1], 10) || 24000;
+      var bin = atob(b64), n = bin.length >> 1, f = new Float32Array(n);
+      for (var i = 0; i < n; i++) {
+        var v = bin.charCodeAt(i * 2) | (bin.charCodeAt(i * 2 + 1) << 8);
+        if (v >= 0x8000) v -= 0x10000;
+        f[i] = v / 0x8000;
+      }
+      var cm = chats[currentLang][s.coachIdx];
+      if (cm && cm.pcm) { cm.pcm.push(f); cm.rate = rate; }
+      playPcm(s.ctx, f, rate, s);
+    }
+    function playPcm(ctx, f, rate, s) {
+      try { if (ctx.state !== "running") ctx.resume(); } catch (e) {}
+      var buf = ctx.createBuffer(1, f.length, rate);
+      if (buf.copyToChannel) buf.copyToChannel(f, 0); else buf.getChannelData(0).set(f);
+      var node = ctx.createBufferSource();
+      node.buffer = buf;
+      node.connect(ctx.destination);
+      var holder = s || live || { nextTime: 0, sources: [] };
+      var t = Math.max(ctx.currentTime + 0.03, holder.nextTime || 0);
+      node.start(t);
+      holder.nextTime = t + buf.duration;
+      if (holder.sources) {
+        holder.sources.push(node);
+        node.onended = function () { var k = holder.sources.indexOf(node); if (k >= 0) holder.sources.splice(k, 1); };
+      }
+    }
+    function liveStopPlayback(s) {
+      (s.sources || []).forEach(function (n) { try { n.stop(); } catch (e) {} });
+      s.sources = [];
+      s.nextTime = 0;
+    }
+    // 코치 말풍선 다시 듣기: 녹음된 코치 목소리를 그대로 재생
+    function replayLivePcm(m) {
+      var ctx = getACtx();
+      if (!ctx || !m.pcm || !m.pcm.length) return false;
+      var holder = live || { nextTime: 0, sources: [] };
+      if (live) liveStopPlayback(live);
+      holder.nextTime = 0;
+      m.pcm.forEach(function (f) { playPcm(ctx, f, m.rate || 24000, holder); });
+      return true;
+    }
+
+    function liveSys(text) {
+      chats[currentLang].push({ sender: "sys", target: text });
+      renderChat();
+    }
+
+    function liveGiveUp(s, msg) {
+      logSR("실시간 포기: " + msg);
+      endLive(s);
+      liveFailed = true;
+      liveSys("⚠️ 실시간 통화를 쓸 수 없어 기존 방식으로 전환했어요 · " + msg);
+      isCalling = false;
+      setPhase("idle");
+      // 기존 방식으로 바로 이어서 통화
+      setTimeout(function () { if (!isCalling) toast("기존 방식으로 통화를 시작하려면 📞를 눌러 주세요.", 3500); }, 300);
+    }
+
+    function endLive(s) {
+      s = s || live;
+      if (!s) return;
+      s.closedByUs = true;
+      try { if (s.ws) s.ws.close(); } catch (e) {}
+      try { if (s.node) { s.node.onaudioprocess = null; s.node.disconnect(); } } catch (e) {}
+      try { if (s.src) s.src.disconnect(); } catch (e) {}
+      if (s.stream) s.stream.getTracks().forEach(function (t) { try { t.stop(); } catch (e) {} });
+      try { if (s.capCtx) s.capCtx.close(); } catch (e) {}
+      liveStopPlayback(s);
+      showLive("");
+      if (live === s) live = null;
+    }
+
+    function liveToggleMute() {
+      if (!live) return;
+      live.muted = !live.muted;
+      if (live.muted) {
+        try { live.ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } })); } catch (e) {}
+      }
+      liveSetListen(live);
+    }
+
+    function liveSendText(text) {
+      if (!live || !live.ready) return false;
+      chats[currentLang].push({ sender: "user", target: text });
+      bumpStat("turns", 1);
+      renderChat();
+      try { live.ws.send(JSON.stringify({ realtimeInput: { text: text } })); } catch (e) { return false; }
+      return true;
+    }
+
+    // 코치 말에 병음·한글 발음·뜻, 내 말에 교정을 붙이기 (빠른 일반 모델로 따로 요청)
+    function enrichLive(ci, ui, learner) {
+      var key = getStore("steady_api_key", "");
+      var cm = chats[currentLang][ci];
+      if (!key || !cm || !cm.target) return;
+      var info = LANGS[currentLang], lang = currentLang;
+      var sys = [
+        "You help a Korean learner of " + info.langName + ". Return JSON only:",
+        "{\"reading\":\"" + info.readingRule + " of COACH\",\"kor\":\"how COACH sounds in Korean Hangul letters\",\"ko\":\"natural Korean translation of COACH\",\"correction\":null}",
+        "correction: if LEARNER (speech transcript) has a grammar/word-choice mistake or unnatural expression, give {\"original\":LEARNER,\"fixed\":natural " + info.langName + ",\"reason\":short reason in Korean}; if LEARNER spoke Korean, put how to say it in " + info.langName + " in fixed; if natural or empty, null. Ignore small speech-recognition errors."
+      ].join("\n");
+      callGemini(key, {
+        systemInstruction: { parts: [{ text: sys }] },
+        contents: [{ role: "user", parts: [{ text: "COACH: " + cm.target + "\nLEARNER: " + (learner || "") }] }]
+      }, { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: 500 }, null, 4)
+      .then(function (res) {
+        if (lang !== currentLang || !res.ok) return;
+        var p = parseJsonLoose(extractText(res).text);
+        if (!p) return;
+        cm.reading = p.reading || ""; cm.kor = p.kor || ""; cm.ko = p.ko || "";
+        if (p.correction && p.correction.fixed && ui >= 0 && chats[currentLang][ui]) {
+          var um = chats[currentLang][ui];
+          if (String(p.correction.fixed).trim() !== String(um.target).trim()) {
+            var arr = getCorr();
+            arr.unshift({ original: um.target, fixed: p.correction.fixed, reason: p.correction.reason || "" });
+            setStore("steady_corr_" + currentLang, JSON.stringify(arr.slice(0, 50)));
+            um.fix = p.correction.fixed; um.reason = p.correction.reason || "";
+            refreshCorrBanner();
+          }
+        }
+        queueRender();
+      })
+      .catch(function () {});
+    }
+
     function stopCall() {
+      if (live) endLive(live);
       isCalling = false;
       stopListening();
       cancelSpeech();
@@ -1676,6 +2089,7 @@
 
     window.__call = function () {
       if (isCalling) { playTone(440, 330); stopCall(); return; }
+      if (liveMode()) { playTone(523, 659); startLiveCall(); return; }
       // 마이크를 미리 여는 코드는 휴대폰 소리를 '통화 모드(작은 수화기 소리)'로 바꿔버려서 제거.
       // 코치 음성은 터치 직후 바로 재생해야 아이폰에서도 소리가 남.
       if (useAISTT()) getACtx();   // 아이폰: 오디오 장치는 터치 순간에 깨워 둬야 함
@@ -1687,6 +2101,11 @@
 
     window.__mic = function () {
       if (!isCalling) { window.__call(); return; }
+      if (live) {
+        if (phase === "coach") { liveStopPlayback(live); liveSetListen(live); return; }
+        if (live.ready) liveToggleMute();
+        return;
+      }
       if (phase === "coach") { cancelSpeech(); startListening(); return; }
       if (phase === "listen") { finishSpeaking(); return; }
       if (phase === "confirm") { flushSend(); return; }
@@ -2174,7 +2593,10 @@
     window.__replay = function () { window.__replayAt(lastCoachIndex()); };
     window.__replayAt = function (i) {
       var m = chats[currentLang][i];
-      if (!m || phase === "think") return;
+      if (!m) return;
+      if (m.pcm && m.pcm.length) { replayLivePcm(m); return; }
+      if (live) { toast("실시간 통화 중에는 코치가 직접 말한 말풍선만 다시 들을 수 있어요", 2500); return; }
+      if (phase === "think") return;
       speakingIdx = i;
       var els = document.querySelectorAll("#chatList .msg.coach");
       for (var k = 0; k < els.length; k++) els[k].classList.remove("speaking");
@@ -2238,6 +2660,7 @@
       var inp = $("manualInput"), v = inp.value.trim();
       if (!v) return;
       inp.value = "";
+      if (live && live.ready) { liveSendText(v); return; }
       if (phase === "think") { toast("코치 답변을 기다리는 중이에요"); return; }
       if (kbdMode()) { try { inp.blur(); } catch (e) {} }
       handleUserReply(v);
@@ -2415,6 +2838,7 @@
       $("darkToggle").checked = darkMode;
       $("autoToggle").checked = autoSend;
       $("tapToggle").checked = tapMode;
+      $("liveToggle").checked = getStore("s365_live", "1") === "1";
       $("kbdToggle").checked = kbdMode();
       $("sttToggle").checked = sttMode() === "ai";
       $("rateRange").value = baseRate;
@@ -2430,11 +2854,11 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-10 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-11 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
-          " 인식:" + sttMode() + " 눌러말하기:" + tapMode + " 자동전송:" + autoSend + " 빠른모드:" + speedMode(),
+          " 실시간:" + (liveMode() ? "켜짐" : (liveFailed ? "실패" : "꺼짐")) + (getStore("s365_live_model", "") ? "(" + getStore("s365_live_model", "") + ")" : "") + " 인식:" + sttMode() + " 눌러말하기:" + tapMode + " 자동전송:" + autoSend + " 빠른모드:" + speedMode(),
         "상태:" + phase + " 통화중:" + isCalling + " 대화수:" + userTurnCount() + " 마지막오류:" + (lastAIError || "-"),
         "기록:"
       ].concat(srLog);
@@ -2455,6 +2879,12 @@
     window.__setKbd = function (on) {
       setStore("s365_kbd2", on ? "1" : "0");
       toast(on ? "⌨️ 가운데 버튼을 누르면 키보드가 열려요. 키보드의 🎤를 눌러 말하세요" : "앱 음성인식을 사용해요", 3000);
+    };
+    window.__setLive = function (on) {
+      setStore("s365_live", on ? "1" : "0");
+      liveFailed = false;
+      if (isCalling) stopCall();
+      toast(on ? "⚡ 다음 통화부터 실시간 통화로 연결해요" : "기존 방식(말하고 → 기다리기)으로 통화해요", 2500);
     };
     window.__setTap = function (on) {
       tapMode = !!on;
