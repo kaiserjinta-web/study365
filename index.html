@@ -391,7 +391,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-8</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-9</span></div>
 
 
       <div class="panel">
@@ -414,6 +414,10 @@
         <div class="row">
           <div><div class="lbl">🤖 AI 음성인식 (Gemini)</div><div class="desc">브라우저 음성인식 대신 녹음해서 Gemini가 알아들어요. 아이폰에서 두 번째 대화부터 인식이 멈추는 문제를 피해요 (Gemini 키 필요)</div></div>
           <label class="switch"><input type="checkbox" id="sttToggle" onchange="window.__setStt(this.checked)"><span></span></label>
+        </div>
+        <div class="row">
+          <div><div class="lbl">⌨️ 키보드 받아쓰기로 말하기</div><div class="desc">아이폰 추천 · 휴대폰 키보드의 🎤 받아쓰기를 써요. 실시간으로 글자가 보이고 바로 고칠 수 있어요 (중국어는 중국어 키보드, 일본어는 일본어 키보드에서)</div></div>
+          <label class="switch"><input type="checkbox" id="kbdToggle" onchange="window.__setKbd(this.checked)"><span></span></label>
         </div>
         <div class="row">
           <div><div class="lbl">🎤 버튼 눌러서 말하기</div><div class="desc">코치 말이 끝나면 가운데 버튼을 눌러 마이크를 켜요. 아이폰에서 인식이 훨씬 안정적이에요</div></div>
@@ -726,6 +730,9 @@
         big.classList.add("listen"); lbl.textContent = autoSend ? "듣는 중…" : "다 말했으면 탭";
         av.classList.add("listening");
         st.textContent = autoSend ? "🎙️ 말씀하세요 · 멈추면 자동 전송돼요" : "🎙️ 말씀하세요 · 끝나면 가운데 버튼을 누르세요";
+      } else if (p === "kbd") {
+        ic.textContent = "⌨️"; lbl.textContent = "키보드로 말하기";
+        st.textContent = "키보드의 🎤(받아쓰기)를 누르고 말한 뒤 [전송] · 중국어는 중국어 키보드에서";
       } else if (p === "confirm") {
         ic.textContent = "✅"; lbl.textContent = "보내기";
         st.textContent = "인식된 말을 확인하세요 · 틀렸으면 ✏️ 고치기";
@@ -1112,7 +1119,7 @@
       // 아이폰: 재시작이 잘 안 되므로 한 세션으로 계속 듣기
       // 아이폰: continuous=false 면 첫 마디(예: '喂')만 받아쓰고 나머지는 버려짐 → 버튼을 누를 때까지 계속 듣기
       // 안드로이드: continuous=true 가 중복 인식을 만들어서 짧은 세션을 자동 재시작
-      r.continuous = isIOS;
+      r.continuous = false;
       r.interimResults = true;
       r.maxAlternatives = 1;
       r.lang = LANGS[currentLang].code;
@@ -1410,8 +1417,19 @@
       return null;
     }
 
+    // ⌨️ 키보드 받아쓰기: 아이폰 자체 받아쓰기(키보드 🎤)를 사용 — 브라우저 음성인식 버그와 무관하고 실시간·수정 가능
+    function kbdMode() { return getStore("s365_kbd", isIOS ? "1" : "0") === "1"; }
+    function openKeyboard() {
+      wantListen = false;
+      setPhase("kbd");
+      showType(true);
+      var inp = $("manualInput");
+      try { inp.focus(); inp.click(); } catch (e) {}
+    }
+
     function startListening() {
       if (!isCalling) return;
+      if (kbdMode()) { openKeyboard(); return; }
       if (useAISTT()) { startRecording(); return; }
       if (!getSR()) {
         if (!srWarned) {
@@ -1430,7 +1448,7 @@
       if (isIOS) {
         // 아이폰: 코치 음성 재생 뒤 마이크가 잠기는 버그 → 음성 엔진 정리 + 무음 재생으로 잠금 풀기
         try { window.speechSynthesis.cancel(); } catch (e) {}
-        silentUnlock();
+        // (무음 재생 요령은 오히려 마이크를 잠글 수 있어 사용하지 않음)
       }
       createRec();          // 턴마다 새 객체
       safeStart();
@@ -2137,6 +2155,7 @@
       if (!v) return;
       inp.value = "";
       if (phase === "think") { toast("코치 답변을 기다리는 중이에요"); return; }
+      if (kbdMode()) { try { inp.blur(); } catch (e) {} }
       handleUserReply(v);
     };
     $("manualInput").addEventListener("keydown", function (e) {
@@ -2312,6 +2331,7 @@
       $("darkToggle").checked = darkMode;
       $("autoToggle").checked = autoSend;
       $("tapToggle").checked = tapMode;
+      $("kbdToggle").checked = kbdMode();
       $("sttToggle").checked = sttMode() === "ai";
       $("rateRange").value = baseRate;
       $("rateLabel").textContent = "×" + baseRate.toFixed(2);
@@ -2326,7 +2346,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-8 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-9 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
@@ -2347,6 +2367,10 @@
     window.__setStt = function (on) {
       setStore("s365_stt2", on ? "ai" : "browser");
       toast(on ? (getProvider() === "gemini" && providerKey() ? "🤖 Gemini가 녹음을 듣고 알아들어요" : "🤖 AI 음성인식은 Gemini 키를 등록해야 동작해요") : "브라우저 음성인식을 사용해요", 2800);
+    };
+    window.__setKbd = function (on) {
+      setStore("s365_kbd", on ? "1" : "0");
+      toast(on ? "⌨️ 가운데 버튼을 누르면 키보드가 열려요. 키보드의 🎤를 눌러 말하세요" : "앱 음성인식을 사용해요", 3000);
     };
     window.__setTap = function (on) {
       tapMode = !!on;
