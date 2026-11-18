@@ -395,7 +395,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-17</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-18</span></div>
 
 
       <div class="panel">
@@ -3012,8 +3012,11 @@
       setAudioSession("playback");
       try { if (ttsAudio) { ttsAudio.pause(); } } catch (e) {}
       var synth = window.speechSynthesis;
+      // 오디오 장치는 버튼을 누른 이 순간에 깨워 둬야 나중에 소리가 남 (아이폰)
+      getACtx();
+      // 아이폰 크롬은 휴대폰 음성이 '재생 중'이라고 하면서 소리를 안 내는 경우가 있어 처음부터 Gemini 음성 사용
       // 휴대폰 음성이 한 번 안 됐으면 이후로는 바로 Gemini 음성 사용 (기다림 없이)
-      if (!synth || synthBroken) { geminiSpeak(text, my); return; }
+      if (!synth || synthBroken || (isIOS && getStore("steady_api_key", ""))) { geminiSpeak(text, my); return; }
       var started = false;
       function attempt(useVoice, next) {
         if (my !== speakSeq) return;
@@ -3087,12 +3090,41 @@
         });
       } catch (e) {}
     }
+    function playTtsPcm(f, rate, my) {
+      if (my !== speakSeq) return;
+      var ctx = getACtx();
+      if (!ctx) { logSR("발음: 오디오 장치 없음"); return; }
+      try {
+        if (ttsAudio && ttsAudio._node) { try { ttsAudio._node.stop(); } catch (e) {} }
+        var buf = ctx.createBuffer(1, f.length, rate);
+        if (buf.copyToChannel) buf.copyToChannel(f, 0); else buf.getChannelData(0).set(f);
+        var node = ctx.createBufferSource();
+        node.buffer = buf;
+        node.connect(ctx.destination);
+        node.start(ctx.currentTime + 0.02);
+        ttsAudio = ttsAudio || {};
+        ttsAudio._node = node;
+        logSR("발음 재생 (" + ctx.state + ")");
+        if (ctx.state !== "running") { try { ctx.resume(); } catch (e) {} toast("🔊 소리가 안 나면 🔊를 한 번 더 눌러 주세요", 2500); }
+      } catch (e) { logSR("발음 재생 오류: " + (e && e.name)); }
+    }
+    function b64PcmToFloat(b64) {
+      var bin = atob(b64), n = bin.length >> 1, f = new Float32Array(n);
+      for (var i = 0; i < n; i++) {
+        var v = bin.charCodeAt(i * 2) | (bin.charCodeAt(i * 2 + 1) << 8);
+        if (v >= 0x8000) v -= 0x10000;
+        f[i] = v / 0x8000;
+      }
+      return f;
+    }
     function geminiSpeak(text, my) {
       var cacheKey = currentLang + "|" + text;
-      if (ttsCache[cacheKey]) { playUrl(ttsCache[cacheKey], my); return; }
+      var hit = ttsCache[cacheKey];
+      if (hit && hit.pcm) { playTtsPcm(hit.pcm, hit.rate, my); return; }
+      if (hit) { playUrl(hit, my); return; }
       var key = getStore("steady_api_key", "");
       if (!key) { toast("🔇 이 휴대폰에서 발음이 재생되지 않아요. 무음 모드·볼륨을 확인하거나 ⚙️설정에서 Gemini 키를 등록해 주세요.", 5000); return; }
-      toast("🔊 발음을 불러오는 중…", 1500);
+      toast("🔊 발음을 불러오는 중… (처음 한 번만 1~3초)", 2500);
       var lang = LANGS[currentLang];
       pickTtsModel(key).then(function (models) {
         var i = 0;
@@ -3117,10 +3149,15 @@
             }
             setStore("s365_tts_model", model);
             var rate = parseInt(((audio.mimeType || "").match(/rate=(\d+)/) || [0, 24000])[1], 10) || 24000;
-            var url = /wav|mpeg|mp3|ogg/i.test(audio.mimeType || "") ? URL.createObjectURL(new Blob([Uint8Array.from(atob(audio.data), function (ch) { return ch.charCodeAt(0); })], { type: audio.mimeType }))
-              : pcmToWavUrl(audio.data, rate);
-            ttsCache[cacheKey] = url;
-            playUrl(url, my);
+            if (/wav|mpeg|mp3|ogg/i.test(audio.mimeType || "") || !getACtx()) {
+              var url = /wav|mpeg|mp3|ogg/i.test(audio.mimeType || "") ? URL.createObjectURL(new Blob([Uint8Array.from(atob(audio.data), function (ch) { return ch.charCodeAt(0); })], { type: audio.mimeType })) : pcmToWavUrl(audio.data, rate);
+              ttsCache[cacheKey] = url;
+              playUrl(url, my);
+            } else {
+              var f = b64PcmToFloat(audio.data);
+              ttsCache[cacheKey] = { pcm: f, rate: rate };
+              playTtsPcm(f, rate, my);
+            }
           });
         }
         return tryOne();
@@ -3163,7 +3200,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-17 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-18 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
