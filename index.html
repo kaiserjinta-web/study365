@@ -153,7 +153,16 @@
     }
     .status-line { text-align: center; font-size: 12.5px; font-weight: 700; color: var(--sub); min-height: 18px; margin-bottom: 22px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .dock-row { display: grid; grid-template-columns: 1fr 1fr auto 1fr 1fr; align-items: center; gap: 4px; }
+    .dock-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 4px; max-width: 340px; margin: 0 auto; }
+    .dock { background: linear-gradient(180deg, var(--surface) 0%, var(--surface2) 100%); }
+    .status-line { display: block; width: fit-content; max-width: 100%; margin-left: auto; margin-right: auto; padding: 6px 12px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 999px; }
+    .side-btn .ic { width: 54px; height: 54px; font-size: 22px; box-shadow: 0 2px 8px rgba(0,0,0,.05); }
+    .side-btn.danger .ic { background: var(--red); border-color: var(--red); color: #fff; }
+    .side-btn.muted .ic { background: var(--text); border-color: var(--text); }
+    .big-btn.end { background: var(--red); box-shadow: 0 8px 22px rgba(239,68,68,.35); }
+    .big-btn.idle { width: 84px; height: 84px; font-size: 34px; animation: callPulse 2.2s infinite; }
+    @keyframes callPulse { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,.45), 0 8px 22px rgba(16,185,129,.38); } 70% { box-shadow: 0 0 0 16px rgba(16,185,129,0), 0 8px 22px rgba(16,185,129,.38); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0), 0 8px 22px rgba(16,185,129,.38); } }
     .side-btn {
       border: none; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px;
       font-size: 10.5px; font-weight: 700; color: var(--sub); padding: 4px 0;
@@ -316,7 +325,10 @@
             </div>
             <div class="caller-side">
               <span class="timer" id="callTimer">00:00 / 20:00</span>
-              <button type="button" class="chip-btn on" id="btnCcToggle" onclick="window.__toggleSub()">자막 ON</button>
+              <div style="display:flex; gap:5px;">
+                <button type="button" class="chip-btn" id="btnHint" onclick="window.__hint()">💡 힌트</button>
+                <button type="button" class="chip-btn on" id="btnCcToggle" onclick="window.__toggleSub()">자막 ON</button>
+              </div>
             </div>
           </div>
           <select class="stage-select" id="stageSelect"></select>
@@ -332,18 +344,18 @@
         <div class="dock">
           <div class="status-line" id="statusLine">통화 버튼을 누르면 코치가 먼저 말해요</div>
           <div class="dock-row">
-            <button type="button" class="side-btn" id="btnSlowDown" onclick="window.__slow()"><span class="ic">🐢</span>천천히</button>
-            <button type="button" class="side-btn" onclick="window.__hint()"><span class="ic">💡</span>힌트</button>
+            <span id="btnSlowDown" style="display:none"></span>
+            <button type="button" class="side-btn hidden" id="btnLeft" onclick="window.__dockLeft()"><span class="ic" id="btnLeftIc">🎙️</span><span id="btnLeftLbl">음소거</span></button>
             <div class="big-wrap">
-              <button type="button" class="big-btn" id="bigBtn" onclick="window.__mic()" aria-label="통화">
+              <button type="button" class="big-btn" id="bigBtn" onclick="window.__dockCenter()" aria-label="통화">
                 <span class="big-ic" id="bigIc">📞</span>
                 <span class="waves" id="waves"><i></i><i></i><i></i><i></i><i></i></span>
                 <span class="spin"></span>
               </button>
               <span class="big-label" id="bigLabel">통화 시작</span>
             </div>
-            <button type="button" class="side-btn" id="btnType" onclick="window.__toggleType()"><span class="ic">⌨️</span>입력</button>
-            <button type="button" class="side-btn end hidden" id="btnEnd" onclick="window.__hangup()"><span class="ic">📵</span>종료</button>
+            <button type="button" class="side-btn hidden" id="btnType" onclick="window.__toggleType()"><span class="ic">⌨️</span>입력</button>
+            <span id="btnEnd" style="display:none"></span>
           </div>
         </div>
       </section>
@@ -395,7 +407,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1118-1</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1118-2</span></div>
 
 
       <div class="panel">
@@ -763,10 +775,51 @@
     }
 
     function syncCallButtons() {
-      $("btnEnd").classList.toggle("hidden", !isCalling);
       var t = $("callTimer");
       t.classList.toggle("live", isCalling);
+      renderDock();
     }
+    // 통화 화면 버튼 배치: 통화 전 = 가운데 버튼 1개 / 통화 중 = 왼쪽·가운데·오른쪽 3개
+    //  - 실시간 통화: [음소거] [종료] [입력]   - 기존 방식: [종료] [말하기] [입력]
+    function renderDock() {
+      var L = $("btnLeft"), R = $("btnType"), big = $("bigBtn");
+      if (!L || !R || !big) return;
+      var hint = $("btnHint");
+      if (hint) hint.style.display = (live ? "none" : "");
+      L.classList.remove("danger", "muted");
+      if (!isCalling) {
+        L.classList.add("hidden"); R.classList.add("hidden");
+        if (phase === "idle") { big.classList.add("idle"); $("bigIc").textContent = "📞"; $("bigLabel").textContent = "코치에게 전화 걸기"; }
+        return;
+      }
+      big.classList.remove("idle");
+      L.classList.remove("hidden"); R.classList.remove("hidden");
+      if (live) {
+        var muted = live.muted;
+        $("btnLeftIc").textContent = muted ? "🔇" : "🎙️";
+        $("btnLeftLbl").textContent = muted ? "음소거 해제" : "음소거";
+        if (muted) L.classList.add("muted");
+        big.className = "big-btn end";
+        $("bigIc").textContent = "📵";
+        $("bigLabel").textContent = "통화 종료";
+      } else {
+        $("btnLeftIc").textContent = "📵";
+        $("btnLeftLbl").textContent = "종료";
+        L.classList.add("danger");
+      }
+    }
+    window.__dockCenter = function () {
+      if (isCalling && live) { window.__hangup(); return; }
+      window.__mic();
+    };
+    window.__dockLeft = function () {
+      if (live) {
+        if (phase === "coach") { liveStopPlayback(live); liveSetListen(live); return; }
+        if (live.ready) liveToggleMute();
+        return;
+      }
+      window.__hangup();
+    };
 
     function showLive(text) {
       var el = $("liveBubble");
@@ -1932,8 +1985,8 @@
       if (live !== s || !isCalling) return;
       clearSpeaking();
       setPhase("listen");
-      $("bigLabel").textContent = s.muted ? "음소거됨" : "듣는 중 · 탭=음소거";
-      $("statusLine").textContent = s.muted ? "🔇 음소거 중 · 가운데 버튼을 누르면 다시 들어요" : "🎙️ 편하게 말하세요 · 말하는 동안 글자가 바로 나와요";
+      renderDock();
+      $("statusLine").textContent = s.muted ? "🔇 음소거 중 · 왼쪽 버튼을 누르면 다시 들어요" : "🎙️ 편하게 말하세요 · 말하는 동안 글자가 바로 나와요";
     }
 
     var renderQueued = false;
@@ -3237,7 +3290,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1118-1 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1118-2 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
