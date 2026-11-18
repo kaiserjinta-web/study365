@@ -395,7 +395,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-16</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-17</span></div>
 
 
       <div class="panel">
@@ -3001,42 +3001,133 @@
       if (v) speakText(ex ? v.example : v.word);
     };
     // 단어장·복습 카드 발음 듣기 (통화 기능과 별개)
+    // 단어장·복습용 발음 듣기 (통화 기능과 별개)
+    // 1) 휴대폰 음성(speechSynthesis) → 2) 기본 음성으로 재시도 → 3) 안 되면 Gemini 음성(TTS)으로 재생
+    var ttsCache = {}, ttsAudio = null, speakSeq = 0, synthBroken = false;
     function speakText(text) {
-      var synth = window.speechSynthesis;
-      if (!synth || !text) { toast("이 브라우저는 발음 듣기를 지원하지 않아요", 2000); return; }
+      if (!text) return;
       if (isCalling) stopCall();
-      // 통화 모드 소리 설정이 남아 있으면 소리가 작거나 안 나와서 기본으로 되돌림
-      setAudioSession("auto");
-      var u = new SpeechSynthesisUtterance(text);
-      u.lang = LANGS[currentLang].code;
-      u.rate = 0.85;
-      u.volume = 1;
-      var voice = pickVoice(); if (voice) u.voice = voice;
+      var my = ++speakSeq;
+      // 아이폰: '재생' 모드로 해야 무음 스위치가 켜져 있어도 소리가 나고 스피커로 나옴 (지금은 마이크를 안 쓰는 상태)
+      setAudioSession("playback");
+      try { if (ttsAudio) { ttsAudio.pause(); } } catch (e) {}
+      var synth = window.speechSynthesis;
+      // 휴대폰 음성이 한 번 안 됐으면 이후로는 바로 Gemini 음성 사용 (기다림 없이)
+      if (!synth || synthBroken) { geminiSpeak(text, my); return; }
       var started = false;
-      u.onstart = function () { started = true; };
-      u.onerror = function (e) {
-        logSR("발음 듣기 오류: " + (e && e.error));
-        // 지정한 음성이 문제면 기본 음성으로 한 번 더
-        if (!started && u.voice && e && e.error !== "interrupted" && e.error !== "canceled") {
-          var u2 = new SpeechSynthesisUtterance(text); u2.lang = u.lang; u2.rate = 0.85;
-          try { synth.speak(u2); } catch (er) {}
-        }
-      };
-      var busy = false;
-      try { busy = synth.speaking || synth.pending; } catch (e) {}
-      if (busy) {
-        // 재생 중에 바로 이어서 speak 하면 아이폰·크롬에서 소리가 안 나는 버그 → 잠깐 쉬고 재생
-        try { synth.cancel(); } catch (e) {}
-        setTimeout(function () { try { synth.resume(); synth.speak(u); } catch (e) {} }, 180);
-      } else {
-        try { synth.resume(); } catch (e) {}
-        try { synth.speak(u); } catch (e) {}
+      function attempt(useVoice, next) {
+        if (my !== speakSeq) return;
+        var u = new SpeechSynthesisUtterance(text);
+        u.lang = LANGS[currentLang].code;
+        u.rate = 0.85;
+        u.volume = 1;
+        if (useVoice) { var v = pickVoice(); if (v) u.voice = v; }
+        u.onstart = function () { started = true; };
+        u.onerror = function (e) { logSR("발음 듣기 오류: " + (e && e.error)); };
+        var busy = false;
+        try { busy = synth.speaking || synth.pending; } catch (e) {}
+        function go() { try { synth.resume(); } catch (e) {} try { synth.speak(u); } catch (e) {} }
+        if (busy) { try { synth.cancel(); } catch (e) {} setTimeout(go, 180); } else go();
+        setTimeout(function () {
+          if (my !== speakSeq || started) return;
+          var going = false;
+          try { going = synth.speaking && !synth.pending; } catch (e) {}
+          if (going) return;
+          try { synth.cancel(); } catch (e) {}
+          next();
+        }, 1500);
       }
-      setTimeout(function () {
-        var going = false;
-        try { going = started || synth.speaking; } catch (e) {}
-        if (!going) toast("🔇 소리가 안 나면: 무음 모드 해제·미디어 볼륨을 올리고, 아이폰 설정에서 " + LANGS[currentLang].label + " 음성이 설치돼 있는지 확인해 주세요.", 5000);
-      }, 2500);
+      attempt(true, function () {
+        logSR("발음 듣기: 기본 음성으로 재시도");
+        attempt(false, function () {
+          logSR("발음 듣기: Gemini 음성으로 전환");
+          synthBroken = true;
+          geminiSpeak(text, my);
+        });
+      });
+    }
+
+    function pickTtsModel(key) {
+      var saved = getStore("s365_tts_model", "");
+      if (saved) return Promise.resolve([saved]);
+      return fetch(API_BASE + "/models?pageSize=1000", { headers: { "x-goog-api-key": key } })
+        .then(readRes)
+        .then(function (res) {
+          var names = ((res.j && res.j.models) || []).map(function (m) { return String(m.name).replace(/^models\//, ""); })
+            .filter(function (n) { return /tts/i.test(n); });
+          names.sort(function (a, b) {
+            var va = parseFloat((a.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0, vb = parseFloat((b.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) || 0;
+            return (vb + (/flash/.test(b) ? 0.5 : 0)) - (va + (/flash/.test(a) ? 0.5 : 0));
+          });
+          if (names.indexOf("gemini-2.5-flash-preview-tts") === -1) names.push("gemini-2.5-flash-preview-tts");
+          return names;
+        })
+        .catch(function () { return ["gemini-2.5-flash-preview-tts"]; });
+    }
+    function pcmToWavUrl(b64, rate) {
+      var bin = atob(b64), n = bin.length;
+      var buf = new ArrayBuffer(44 + n), dv = new DataView(buf), u8 = new Uint8Array(buf);
+      function ws(o, str) { for (var q = 0; q < str.length; q++) dv.setUint8(o + q, str.charCodeAt(q)); }
+      ws(0, "RIFF"); dv.setUint32(4, 36 + n, true); ws(8, "WAVE"); ws(12, "fmt ");
+      dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+      dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+      ws(36, "data"); dv.setUint32(40, n, true);
+      for (var i = 0; i < n; i++) u8[44 + i] = bin.charCodeAt(i);
+      return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+    }
+    function playUrl(url, my) {
+      if (my !== speakSeq) return;
+      try {
+        if (!ttsAudio) { ttsAudio = new Audio(); ttsAudio.setAttribute("playsinline", ""); }
+        ttsAudio.src = url;
+        var pr = ttsAudio.play();
+        if (pr && pr.catch) pr.catch(function (e) {
+          logSR("발음 재생 실패: " + (e && e.name));
+          toast("🔇 소리를 재생하지 못했어요. 🔊를 한 번 더 눌러 주세요.", 3000);
+        });
+      } catch (e) {}
+    }
+    function geminiSpeak(text, my) {
+      var cacheKey = currentLang + "|" + text;
+      if (ttsCache[cacheKey]) { playUrl(ttsCache[cacheKey], my); return; }
+      var key = getStore("steady_api_key", "");
+      if (!key) { toast("🔇 이 휴대폰에서 발음이 재생되지 않아요. 무음 모드·볼륨을 확인하거나 ⚙️설정에서 Gemini 키를 등록해 주세요.", 5000); return; }
+      toast("🔊 발음을 불러오는 중…", 1500);
+      var lang = LANGS[currentLang];
+      pickTtsModel(key).then(function (models) {
+        var i = 0;
+        function tryOne() {
+          var model = models[i];
+          return fetch(API_BASE + "/models/" + encodeURIComponent(model) + ":generateContent", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: "Read this " + lang.langName + " text aloud slowly and clearly, nothing else: " + text }] }],
+              generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } } }
+            })
+          }).then(readRes).then(function (res) {
+            var c = res.j && res.j.candidates && res.j.candidates[0];
+            var parts = (c && c.content && c.content.parts) || [];
+            var audio = null;
+            for (var k = 0; k < parts.length; k++) if (parts[k].inlineData && parts[k].inlineData.data) { audio = parts[k].inlineData; break; }
+            if (!audio) {
+              logSR("Gemini 음성 실패: " + model + " " + res.status + " " + ((res.j.error && res.j.error.message) || "").slice(0, 60));
+              if (i < models.length - 1 && i < 3) { i++; return tryOne(); }
+              throw new Error((res.j.error && res.j.error.message) || "음성 없음");
+            }
+            setStore("s365_tts_model", model);
+            var rate = parseInt(((audio.mimeType || "").match(/rate=(\d+)/) || [0, 24000])[1], 10) || 24000;
+            var url = /wav|mpeg|mp3|ogg/i.test(audio.mimeType || "") ? URL.createObjectURL(new Blob([Uint8Array.from(atob(audio.data), function (ch) { return ch.charCodeAt(0); })], { type: audio.mimeType }))
+              : pcmToWavUrl(audio.data, rate);
+            ttsCache[cacheKey] = url;
+            playUrl(url, my);
+          });
+        }
+        return tryOne();
+      }).catch(function (e) {
+        logSR("발음 듣기 최종 실패: " + (e && e.message));
+        toast("🔇 발음을 재생하지 못했어요 (" + String((e && e.message) || "").slice(0, 60) + ")", 4000);
+      });
     }
     window.__speakWord = function (i) { var v = LANGS[currentLang].vocab[i]; if (v) speakText(v.word); };
 
@@ -3072,7 +3163,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-16 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-17 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
