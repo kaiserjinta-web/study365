@@ -395,7 +395,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-18</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-19</span></div>
 
 
       <div class="panel">
@@ -3118,7 +3118,7 @@
       return f;
     }
     function geminiSpeak(text, my) {
-      var cacheKey = currentLang + "|" + text;
+      var cacheKey = "v2|" + currentLang + "|" + text;
       var hit = ttsCache[cacheKey];
       if (hit && hit.pcm) { playTtsPcm(hit.pcm, hit.rate, my); return; }
       if (hit) { playUrl(hit, my); return; }
@@ -3127,17 +3127,25 @@
       toast("🔊 발음을 불러오는 중… (처음 한 번만 1~3초)", 2500);
       var lang = LANGS[currentLang];
       pickTtsModel(key).then(function (models) {
-        var i = 0;
+        var i = 0, noLangCode = false;
+        // 음성 모델은 받은 글자를 그대로 읽기 때문에, 영어 지시문 없이 '읽을 문장만' 보냄
+        var say = String(text).trim();
+        if (currentLang !== "en" && !/[。！？!?.…]$/.test(say)) say += "。";
+        var langCode = { zh: "cmn-CN", ja: "ja-JP", en: "en-US" }[currentLang];
         function tryOne() {
           var model = models[i];
+          var speech = { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } };
+          if (!noLangCode && langCode) speech.languageCode = langCode;
           return fetch(API_BASE + "/models/" + encodeURIComponent(model) + ":generateContent", {
             method: "POST",
             headers: { "Content-Type": "application/json", "x-goog-api-key": key },
             body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: "Read this " + lang.langName + " text aloud slowly and clearly, nothing else: " + text }] }],
-              generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Kore" } } } }
+              contents: [{ role: "user", parts: [{ text: say }] }],
+              generationConfig: { responseModalities: ["AUDIO"], speechConfig: speech }
             })
           }).then(readRes).then(function (res) {
+            // 언어 코드 설정을 거부하면 빼고 다시
+            if (!res.ok && res.status === 400 && !noLangCode && /language/i.test((res.j.error && res.j.error.message) || "")) { noLangCode = true; return tryOne(); }
             var c = res.j && res.j.candidates && res.j.candidates[0];
             var parts = (c && c.content && c.content.parts) || [];
             var audio = null;
@@ -3200,7 +3208,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-18 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1117-19 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
