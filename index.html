@@ -122,7 +122,7 @@
     .b-kor { font-size: 12.5px; color: var(--green); font-weight: 600; }
     .b-ko { font-size: 12.5px; color: var(--sub); }
     .b-play { font-size: 11px; color: var(--sub); margin-top: 4px; }
-    .hide-sub .b-sub { display: none; }
+    .hide-sub .b-sub, .hide-sub .sugg { display: none; }
     .fix-note {
       margin-top: 5px; max-width: 100%; background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text);
       border-radius: 12px; padding: 7px 10px; font-size: 12.5px; line-height: 1.45;
@@ -395,7 +395,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1117-19</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1118-1</span></div>
 
 
       <div class="panel">
@@ -847,7 +847,11 @@
           if (m.ko) sub += '<div class="b-ko">' + esc(m.ko) + '</div>';
           html += '<div class="msg coach' + (i === speakingIdx ? ' speaking' : '') + '"><div class="msg-row"><div class="mini-av">' + av + '</div>' +
             '<div class="bubble" onclick="window.__replayAt(' + i + ')"><div class="b-target">' + (m.target ? esc(m.target) : '<span class="typing"><i></i><i></i><i></i></span>') + '</div>' +
-            (sub ? '<div class="b-sub">' + sub + '</div>' : '') + '</div></div></div>';
+            (sub ? '<div class="b-sub">' + sub + '</div>' : '') + '</div></div>' +
+            (m.suggest ? '<div class="fix-note sugg" style="margin-left:35px; background:var(--accent-soft); border-color:var(--accent-border); color:var(--text);">💡 이렇게 답해 보세요<br><b>' + esc(m.suggest.text) + '</b>' +
+              (m.suggest.kor ? '<br><span style="color:var(--green); font-weight:600;">🔈 ' + esc(m.suggest.kor) + '</span>' : '') +
+              (m.suggest.ko ? '<br><span style="color:var(--sub);">' + esc(m.suggest.ko) + '</span>' : '') + '</div>' : '') +
+            '</div>';
         }
       }
       var el = $("chatList");
@@ -1712,11 +1716,27 @@
       var info = LANGS[currentLang];
       var stageEl = $("stageSelect");
       var stage = stageEl.options[stageEl.selectedIndex] ? stageEl.options[stageEl.selectedIndex].text : "";
+      var lv = parseFloat(getStore("s365_level_" + currentLang, "")) || 0;
       return [
-        "You are " + info.persona + ", on a live 1:1 PHONE CALL lesson with a Korean adult learner. Lesson level/topic: " + stage + ".",
-        "Speak ONLY in " + info.langName + ", naturally and warmly, like a real phone call. Keep each reply short: react specifically to what the learner just said, then ask ONE follow-up question about the same topic.",
-        "Speak a little slower and clearer than normal for a learner. If the learner speaks Korean or gets stuck, briefly help them say it in " + info.langName + " and encourage them to repeat.",
-        "Do not lecture about grammar during the call; corrections are shown on screen separately. Never repeat a question you already asked.",
+        "You are " + info.persona + ", on a live 1:1 PHONE CALL lesson with a Korean adult learner. Topic for today: " + stage + ".",
+        lv ? "From previous calls, the learner's estimated level is about " + lv.toFixed(1) + " out of 5 (1 = beginner, 5 = near-native). Start around that level." : "You don't know the learner's level yet: in the first 1-2 exchanges, gauge it from how they answer.",
+        "",
+        "BE RESPONSIVE, NOT ONE-SIDED:",
+        "- The learner should talk most of the time. Keep each of your turns to 1-2 short sentences, then stop and let them answer. Never give long monologues or explanations.",
+        "- Always react specifically to what the learner actually said (mention their detail), then ask ONE natural follow-up about the same thing.",
+        "- Keep adjusting to the learner's level every turn, based on how they speak:",
+        "  * If they struggle (very short answers, long pauses, Korean, many mistakes): use simpler, shorter sentences and common words, speak slower, ask easy questions, offer choices (e.g. A or B?) or give a sentence starter they can complete.",
+        "  * If they answer comfortably: speak at natural speed, ask why/how questions, and invite longer answers and opinions.",
+        "  * If they are fluent: use richer vocabulary and idioms, challenge them with deeper questions.",
+        "- If they answer in only a few words, encourage a fuller answer (ask a follow-up or give a hint) instead of moving to a new topic.",
+        "",
+        "CORRECT GENTLY IN REAL TIME:",
+        "- When the learner makes a meaningful mistake, naturally say the correct version back in your reply (e.g. 'Oh, you mean ...?') and continue the conversation. Do it briefly; don't correct every tiny slip and don't lecture about grammar.",
+        "- For an important or repeated mistake, you may briefly say the more natural way and ask them to try saying it once.",
+        "- If the learner speaks Korean or gets stuck, give them the " + info.langName + " phrase and invite them to repeat it.",
+        "- Never answer for the learner, and never repeat a question you already asked.",
+        "",
+        "Speak ONLY in " + info.langName + ", warmly, like a real phone call, a little slower and clearer than normal.",
         "Start the call: greet the learner and ask how they have been lately."
       ].join("\n");
     }
@@ -2068,18 +2088,26 @@
       var info = LANGS[currentLang], lang = currentLang;
       var sys = [
         "You help a Korean learner of " + info.langName + ". Return JSON only:",
-        "{\"reading\":\"" + info.readingRule + " of COACH\",\"kor\":\"how COACH sounds in Korean Hangul letters\",\"ko\":\"natural Korean translation of COACH\",\"correction\":null}",
+        "{\"reading\":\"" + info.readingRule + " of COACH\",\"kor\":\"how COACH sounds in Korean Hangul letters\",\"ko\":\"natural Korean translation of COACH\",\"correction\":null,\"suggest\":{\"text\":\"\",\"kor\":\"\",\"ko\":\"\"},\"level\":0}",
+        "suggest: a natural model answer the learner could say next in reply to COACH, in " + info.langName + ", 1-2 sentences, at a level slightly above LEARNER's current level (simple if LEARNER is a beginner). text = the answer, kor = its pronunciation in Korean Hangul letters, ko = Korean meaning. If COACH asked no question, suggest a natural response anyway.",
+        "level: estimate LEARNER's speaking level from LEARNER's sentence, 1 (beginner) to 5 (near-native), as a number; 0 if LEARNER is empty or Korean only.",
         "correction: if LEARNER (speech transcript) has a grammar/word-choice mistake or unnatural expression, give {\"original\":LEARNER,\"fixed\":natural " + info.langName + ",\"reason\":short reason in Korean}; if LEARNER spoke Korean, put how to say it in " + info.langName + " in fixed; if natural or empty, null. Ignore small speech-recognition errors."
       ].join("\n");
       callGemini(key, {
         systemInstruction: { parts: [{ text: sys }] },
         contents: [{ role: "user", parts: [{ text: "COACH: " + cm.target + "\nLEARNER: " + (learner || "") }] }]
-      }, { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: 500 }, null, 4)
+      }, { responseMimeType: "application/json", temperature: 0.2, maxOutputTokens: 900 }, null, 4)
       .then(function (res) {
         if (lang !== currentLang || !res.ok) return;
         var p = parseJsonLoose(extractText(res).text);
         if (!p) return;
         cm.reading = p.reading || ""; cm.kor = p.kor || ""; cm.ko = p.ko || "";
+        if (p.suggest && p.suggest.text) cm.suggest = { text: p.suggest.text, kor: p.suggest.kor || "", ko: p.suggest.ko || "" };
+        var lvNew = parseFloat(p.level);
+        if (lvNew >= 1 && lvNew <= 5) {
+          var lvOld = parseFloat(getStore("s365_level_" + currentLang, "")) || 0;
+          setStore("s365_level_" + currentLang, String(lvOld ? (lvOld * 0.75 + lvNew * 0.25) : lvNew));
+        }
         if (p.correction && p.correction.fixed && ui >= 0 && chats[currentLang][ui]) {
           var um = chats[currentLang][ui];
           if (String(p.correction.fixed).trim() !== String(um.target).trim()) {
@@ -2731,7 +2759,8 @@
       $("stToday").innerHTML = Math.floor((today.sec || 0) / 60) + "<small>분</small>";
       $("stStreak").innerHTML = streakDays(s) + "<small>일</small>";
       $("stTurns").innerHTML = (today.turns || 0) + "<small>회</small>";
-      $("reviewSub").textContent = LANGS[currentLang].label + " 교정 노트 · 학습 시간은 세 언어 합계예요";
+      var lvShow = parseFloat(getStore("s365_level_" + currentLang, "")) || 0;
+      $("reviewSub").textContent = LANGS[currentLang].label + (lvShow ? " · AI가 본 내 말하기 레벨 " + lvShow.toFixed(1) + " / 5" : "") + " · 학습 시간은 세 언어 합계예요";
 
       var days = [], max = 1, total = 0, names = ["일", "월", "화", "수", "목", "금", "토"];
       for (var i = 6; i >= 0; i--) {
@@ -3208,7 +3237,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1117-19 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1118-1 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
