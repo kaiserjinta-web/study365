@@ -407,7 +407,7 @@
       <!-- ⚙️ 설정 -->
       <section class="view scroll" id="view-settings">
         <div class="page">
-          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1118-2</span></div>
+          <div class="page-title">설정 <span style="font-size:12px; color:var(--sub); font-weight:700;">버전 1120-1</span></div>
 
 
       <div class="panel">
@@ -901,9 +901,7 @@
           html += '<div class="msg coach' + (i === speakingIdx ? ' speaking' : '') + '"><div class="msg-row"><div class="mini-av">' + av + '</div>' +
             '<div class="bubble" onclick="window.__replayAt(' + i + ')"><div class="b-target">' + (m.target ? esc(m.target) : '<span class="typing"><i></i><i></i><i></i></span>') + '</div>' +
             (sub ? '<div class="b-sub">' + sub + '</div>' : '') + '</div></div>' +
-            (m.suggest ? '<div class="fix-note sugg" style="margin-left:35px; background:var(--accent-soft); border-color:var(--accent-border); color:var(--text);">💡 이렇게 답해 보세요<br><b>' + esc(m.suggest.text) + '</b>' +
-              (m.suggest.kor ? '<br><span style="color:var(--green); font-weight:600;">🔈 ' + esc(m.suggest.kor) + '</span>' : '') +
-              (m.suggest.ko ? '<br><span style="color:var(--sub);">' + esc(m.suggest.ko) + '</span>' : '') + '</div>' : '') +
+            renderTipBox(m) +
             '</div>';
         }
       }
@@ -912,6 +910,26 @@
       el.classList.toggle("hide-sub", !showSub);
       renderTyping();
       scrollChat();
+    }
+
+    function renderTipBox(m) {
+      if (!m.suggest && !m.tip && !m.tipLoading) return "";
+      var box = '<div class="fix-note sugg" style="margin-left:35px; background:var(--accent-soft); border-color:var(--accent-border); color:var(--text); line-height:1.55;">';
+      if (m.tipLoading && !m.tip && !m.suggest) return box + '💡 답변 팁 만드는 중 <span class="typing"><i></i><i></i><i></i></span></div>';
+      box += '<div style="font-weight:800; color:var(--accent-dark);">💡 이렇게 답해 보세요</div>';
+      if (m.tip) box += '<div style="margin-top:2px;">' + esc(m.tip) + '</div>';
+      if (m.keys && m.keys.length) {
+        box += '<div style="display:flex; flex-wrap:wrap; gap:5px; margin-top:6px;">' + m.keys.map(function (k) {
+          return '<span style="background:var(--surface); border:1px solid var(--accent-border); border-radius:10px; padding:3px 8px; font-size:12px;"><b>' + esc(k.w) + '</b>' +
+            (k.kor ? ' <span style="color:var(--green);">' + esc(k.kor) + '</span>' : '') + (k.ko ? ' <span style="color:var(--sub);">' + esc(k.ko) + '</span>' : '') + '</span>';
+        }).join("") + '</div>';
+      }
+      if (m.suggest) {
+        box += '<div style="margin-top:7px; padding-top:6px; border-top:1px dashed var(--accent-border);">예시 <b>' + esc(m.suggest.text) + '</b>' +
+          (m.suggest.kor ? '<br><span style="color:var(--green); font-weight:600;">🔈 ' + esc(m.suggest.kor) + '</span>' : '') +
+          (m.suggest.ko ? '<br><span style="color:var(--sub);">' + esc(m.suggest.ko) + '</span>' : '') + '</div>';
+      }
+      return box + '</div>';
     }
 
     function getLastCoachMsg() {
@@ -1946,6 +1964,7 @@
         ensureCoachMsg(s);
         var cm = chats[currentLang][s.coachIdx];
         if (cm) { cm.target = (cm.target + sc.outputTranscription.text).replace(/^\s+/, ""); queueRender(); }
+        try { maybeEarlyTip(s.coachIdx, s.userIdx); } catch (e) {}
       }
       if (sc.turnComplete || sc.generationComplete) {
         if (sc.turnComplete) liveTurnDone(s);
@@ -2133,6 +2152,45 @@
       return true;
     }
 
+    // 💡 코치가 질문하는 순간 '어떻게 답하면 좋을지' 팁을 바로 만들기
+    function maybeEarlyTip(ci, ui) {
+      var cm = chats[currentLang][ci];
+      if (!cm || cm.tipAsked) return;
+      var t = cm.target || "";
+      if (!/[?？]/.test(t) && !/[吗呢か]\s*[。.]?$/.test(t)) return;     // 질문이 나오면 바로
+      cm.tipAsked = true;
+      cm.tipLoading = true;
+      queueRender();
+      var key = getStore("steady_api_key", "");
+      if (!key) { cm.tipLoading = false; return; }
+      var info = LANGS[currentLang], lang = currentLang;
+      var learner = ui >= 0 && chats[currentLang][ui] ? chats[currentLang][ui].target : "";
+      var lv = parseFloat(getStore("s365_level_" + currentLang, "")) || 0;
+      var sys = [
+        "A Korean learner of " + info.langName + " is on a phone call. The COACH just asked a question. Help the learner answer RIGHT NOW. Return JSON only:",
+        "{\"tip\":\"\",\"keys\":[{\"w\":\"\",\"kor\":\"\",\"ko\":\"\"}],\"suggest\":{\"text\":\"\",\"kor\":\"\",\"ko\":\"\"}}",
+        "tip: ONE short, practical tip in Korean on how to answer this question (what to say + a useful pattern). Max 40 Korean characters.",
+        "keys: 2-3 useful words or phrases in " + info.langName + " for answering (w), with Korean Hangul pronunciation (kor) and Korean meaning (ko).",
+        "suggest: one natural model answer in " + info.langName + " (1-2 short sentences) the learner can say" + (lv ? ", for a level-" + lv.toFixed(1) + "/5 speaker (slightly above)" : ", simple and natural") + ", with kor (Korean Hangul pronunciation) and ko (Korean meaning)."
+      ].join("\n");
+      callGemini(key, {
+        systemInstruction: { parts: [{ text: sys }] },
+        contents: [{ role: "user", parts: [{ text: "COACH: " + t + "\nLEARNER'S PREVIOUS MESSAGE: " + (learner || "(none)") }] }]
+      }, { responseMimeType: "application/json", temperature: 0.4, maxOutputTokens: 600 }, null, 3)
+      .then(function (res) {
+        cm.tipLoading = false;
+        if (lang !== currentLang || !res.ok) { queueRender(); return; }
+        var p = parseJsonLoose(extractText(res).text);
+        if (p) {
+          if (p.tip) cm.tip = String(p.tip);
+          if (p.keys && p.keys.length) cm.keys = p.keys.filter(function (k) { return k && k.w; }).slice(0, 3);
+          if (p.suggest && p.suggest.text) cm.suggest = { text: p.suggest.text, kor: p.suggest.kor || "", ko: p.suggest.ko || "" };
+        }
+        queueRender();
+      })
+      .catch(function () { cm.tipLoading = false; queueRender(); });
+    }
+
     // 코치 말에 병음·한글 발음·뜻, 내 말에 교정을 붙이기 (빠른 일반 모델로 따로 요청)
     function enrichLive(ci, ui, learner) {
       var key = getStore("steady_api_key", "");
@@ -2155,7 +2213,7 @@
         var p = parseJsonLoose(extractText(res).text);
         if (!p) return;
         cm.reading = p.reading || ""; cm.kor = p.kor || ""; cm.ko = p.ko || "";
-        if (p.suggest && p.suggest.text) cm.suggest = { text: p.suggest.text, kor: p.suggest.kor || "", ko: p.suggest.ko || "" };
+        if (p.suggest && p.suggest.text && !cm.suggest) cm.suggest = { text: p.suggest.text, kor: p.suggest.kor || "", ko: p.suggest.ko || "" };
         var lvNew = parseFloat(p.level);
         if (lvNew >= 1 && lvNew <= 5) {
           var lvOld = parseFloat(getStore("s365_level_" + currentLang, "")) || 0;
@@ -3290,7 +3348,7 @@
     };
     window.__copyDiag = function () {
       var lines = [
-        "[Study365 진단] 버전 1118-2 · " + new Date().toLocaleString("ko-KR"),
+        "[Study365 진단] 버전 1120-1 · " + new Date().toLocaleString("ko-KR"),
         "UA: " + navigator.userAgent,
         "iOS:" + isIOS + " 언어:" + currentLang + " AI:" + getProvider() + (hasApiKey() ? "(키 있음)" : "(키 없음)") +
           " 모델:" + (getStore(getProvider() === "claude" ? "s365_claude_model" : "s365_model", "") || "-") +
